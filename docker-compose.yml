@@ -1,0 +1,59 @@
+services:
+  faultline:
+    build:
+      context: .
+    image: faultline:local
+    ports:
+      - "${FAULTLINE_PORT:-8080}:8080"
+    environment:
+      FAULTLINE_ADDR: ":8080"
+      FAULTLINE_COOKIE_SECURE: "${FAULTLINE_COOKIE_SECURE:-true}"
+      DATABASE_URL: "postgres://faultline:${POSTGRES_PASSWORD:-faultline}@db:5432/faultline?sslmode=disable"
+      DATABASE_MAX_CONNS: "${DATABASE_MAX_CONNS:-10}"
+      DATABASE_MIN_CONNS: "${DATABASE_MIN_CONNS:-0}"
+      DATABASE_MAX_CONN_LIFETIME: "${DATABASE_MAX_CONN_LIFETIME:-1h}"
+      DATABASE_MAX_CONN_IDLE_TIME: "${DATABASE_MAX_CONN_IDLE_TIME:-30m}"
+      DATABASE_HEALTH_CHECK_PERIOD: "${DATABASE_HEALTH_CHECK_PERIOD:-1m}"
+      SPILL_DIR: /var/lib/faultline/spill
+      # Single sign-on. Unset in .env, these all resolve to empty, which
+      # leaves SSO off — FAULTLINE_OIDC_CLIENT_ID is the switch.
+      FAULTLINE_OIDC_CLIENT_ID: "${FAULTLINE_OIDC_CLIENT_ID:-}"
+      FAULTLINE_OIDC_ISSUER: "${FAULTLINE_OIDC_ISSUER:-}"
+      FAULTLINE_OIDC_CLIENT_SECRET: "${FAULTLINE_OIDC_CLIENT_SECRET:-}"
+      FAULTLINE_OIDC_REDIRECT_URL: "${FAULTLINE_OIDC_REDIRECT_URL:-}"
+      FAULTLINE_OIDC_ALLOWED_HD: "${FAULTLINE_OIDC_ALLOWED_HD:-}"
+    volumes:
+      - ./.data/spill:/var/lib/faultline/spill
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  db:
+    image: timescale/timescaledb:latest-pg18@sha256:9508616d5b941ed931198504c5db3fb47e8f53f790732ea1e889591f1062057c
+    environment:
+      POSTGRES_DB: faultline
+      POSTGRES_USER: faultline
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:-faultline}"
+    ports:
+      - "${POSTGRES_PORT:-5433}:5432"
+    volumes:
+      - ./.data/pgdata:/var/lib/postgresql
+    command:
+      - postgres
+      - -c
+      - shared_buffers=4GB
+      - -c
+      - max_wal_size=4GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faultline -d faultline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped

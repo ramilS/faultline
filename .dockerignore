@@ -1,0 +1,9 @@
+.git
+.gitignore
+.env
+bin
+node_modules
+**/node_modules
+# Built by the frontend stage; a stale local copy would otherwise be COPYed
+# into the backend stage and embedded alongside the fresh bundle.
+internal/dashboard/dist

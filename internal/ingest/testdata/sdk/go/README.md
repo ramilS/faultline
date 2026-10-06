@@ -1,0 +1,1 @@
+github.com/getsentry/sentry-go v0.49.0, captured 2026-09-29 with: internal/ingest/testdata/sdk/capture.sh go go golang:1.25 sh -c "go get github.com/getsentry/sentry-go@v0.49.0 && go list -m github.com/getsentry/sentry-go && go run ."

@@ -1,0 +1,8 @@
+DROP TABLE IF EXISTS grouping_rules;
+DROP TABLE IF EXISTS releases;
+DROP TABLE IF EXISTS issue_tag_values;
+DROP TABLE IF EXISTS issues;
+DROP TYPE IF EXISTS issue_status;
+DROP TABLE IF EXISTS project_keys;
+DROP TABLE IF EXISTS projects;
+DROP TABLE IF EXISTS users;

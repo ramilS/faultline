@@ -1,0 +1,20 @@
+{
+  "name": "@faultline/e2e",
+  "private": true,
+  "license": "MIT",
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Compatibility harness that runs real Sentry SDKs against a local Faultline. Not part of the npm workspace: run.sh drives it standalone.",
+  "scripts": {
+    "test": "node --experimental-strip-types --test compat.test.ts"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "devDependencies": {
+    "@sentry/node": "^10.69.0"
+  },
+  "optionalDependencies": {
+    "@sentry/cli": "2.58.6"
+  }
+}

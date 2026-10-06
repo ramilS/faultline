@@ -1,0 +1,16 @@
+{
+  "name": "faultline",
+  "private": true,
+  "license": "MIT",
+  "workspaces": [
+    "web"
+  ],
+  "scripts": {
+    "build": "npm run build --workspace @faultline/web",
+    "typecheck": "npm run typecheck --workspace @faultline/web",
+    "test": "npm test --workspace @faultline/web"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

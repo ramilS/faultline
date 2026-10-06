@@ -1,0 +1,11 @@
+# compiler: R8
+# compiler_version: 8.5.35
+# min_api: 24
+com.acme.shop.Cart -> a.a:
+    java.util.List items -> a
+    9:9:void <init>() -> <init>
+    21:33:int total(int):101:113 -> b
+    35:35:void clear():60:60 -> c
+com.acme.shop.Checkout -> a.b:
+    1:4:void submit(com.acme.shop.Cart):12:15 -> a
+    5:5:int com.acme.shop.Cart.total(int):101:101 -> a

@@ -1,0 +1,218 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+@import "@fontsource/jetbrains-mono/400.css";
+@import "@fontsource/jetbrains-mono/500.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+  Monochrome base, semantic accent.
+
+  The zinc ramp carries every structural role: surfaces, borders, chrome,
+  hierarchy. Hue appears only where it encodes meaning — severity and issue
+  status — so a coloured pixel is always information. Any new token that is
+  merely decorative belongs in the neutral ramp instead.
+
+  Both themes are authored as complete sets rather than derived from each
+  other; dark is not an inversion of light, and each is contrast-checked
+  independently.
+*/
+
+:root {
+  --radius: 0.5rem;
+
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.21 0.006 285.9);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.006 285.9);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.006 285.9);
+  --primary: oklch(0.21 0.006 285.9);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.967 0.001 286.4);
+  --secondary-foreground: oklch(0.21 0.006 285.9);
+  --muted: oklch(0.967 0.001 286.4);
+  --muted-foreground: oklch(0.48 0.014 285.9);
+  --accent: oklch(0.967 0.001 286.4);
+  --accent-foreground: oklch(0.21 0.006 285.9);
+  --destructive: oklch(0.55 0.19 29);
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.92 0.004 286.3);
+  --input: oklch(0.87 0.005 286.3);
+  --ring: oklch(0.48 0.014 285.9);
+
+  /* Severity. Fatal and error share the coral the dashboard already used as
+     its eyebrow accent; it now earns its place by carrying meaning. */
+  --level-fatal: oklch(0.47 0.2 27);
+  --level-error: oklch(0.55 0.19 29);
+  --level-warning: oklch(0.55 0.13 74);
+  --level-info: oklch(0.48 0.014 285.9);
+  /* Debug is the least severe level, so it must carry the lowest contrast
+     against the white background of any level (~4.86:1, just under warning's
+     ~4.96:1) — not the highest, which the previous value produced. Its raw
+     OKLCH lightness ties error/warning at 0.55; what keeps it least prominent
+     is near-zero chroma, since their saturated hues add luminance a neutral
+     at the same L does not get. Both this and 4.5:1 (the AA text threshold at
+     badge type size) constrain the value together, not lightness alone. */
+  --level-debug: oklch(0.55 0.006 285.9);
+
+  /* Issue status. Ignored is deliberately colourless. */
+  --status-unresolved: oklch(0.21 0.006 285.9);
+  --status-resolved: oklch(0.5 0.13 155);
+  --status-ignored: oklch(0.48 0.014 285.9);
+
+  /* Low-alpha surfaces for badges, keyed to the tokens above. */
+  --level-fatal-surface: oklch(0.47 0.2 27 / 12%);
+  --level-error-surface: oklch(0.55 0.19 29 / 12%);
+  --level-warning-surface: oklch(0.55 0.13 74 / 14%);
+  --level-info-surface: oklch(0.48 0.014 285.9 / 10%);
+  --level-debug-surface: oklch(0.55 0.006 285.9 / 10%);
+  --status-resolved-surface: oklch(0.5 0.13 155 / 12%);
+
+  /* In-app stack frames are the ones a developer can act on. */
+  --frame-in-app: oklch(0.21 0.006 285.9);
+  --frame-vendor: oklch(0.48 0.014 285.9);
+  --frame-focus-surface: oklch(0.55 0.19 29 / 14%);
+}
+
+.dark {
+  --background: oklch(0.165 0.004 285.9);
+  --foreground: oklch(0.97 0 0);
+  --card: oklch(0.205 0.005 285.9);
+  --card-foreground: oklch(0.97 0 0);
+  --popover: oklch(0.225 0.005 285.9);
+  --popover-foreground: oklch(0.97 0 0);
+  --primary: oklch(0.97 0 0);
+  --primary-foreground: oklch(0.205 0.005 285.9);
+  --secondary: oklch(0.27 0.006 286);
+  --secondary-foreground: oklch(0.97 0 0);
+  --muted: oklch(0.27 0.006 286);
+  --muted-foreground: oklch(0.715 0.015 286.1);
+  --accent: oklch(0.29 0.006 286);
+  --accent-foreground: oklch(0.97 0 0);
+  --destructive: oklch(0.72 0.16 30);
+  --destructive-foreground: oklch(0.205 0.005 285.9);
+  --border: oklch(1 0 0 / 12%);
+  --input: oklch(1 0 0 / 18%);
+  --ring: oklch(0.62 0.015 286.1);
+
+  --level-fatal: oklch(0.78 0.17 25);
+  --level-error: oklch(0.75 0.15 30);
+  --level-warning: oklch(0.82 0.14 80);
+  --level-info: oklch(0.715 0.015 286.1);
+  /* Same rationale as light mode, inverted: debug must sit closest to the
+     dark background of any level (~5.29:1, well under info's ~7.61:1), not
+     brightest. Its raw lightness (0.62) is already the lowest of the five
+     here, so no chroma tie to explain — but 0.62 is a floor, not just a
+     ceiling: below it the badge drops under the 4.5:1 AA text threshold. */
+  --level-debug: oklch(0.62 0.006 285.9);
+
+  --status-unresolved: oklch(0.97 0 0);
+  --status-resolved: oklch(0.76 0.15 158);
+  --status-ignored: oklch(0.715 0.015 286.1);
+
+  --level-fatal-surface: oklch(0.78 0.17 25 / 16%);
+  --level-error-surface: oklch(0.75 0.15 30 / 16%);
+  --level-warning-surface: oklch(0.82 0.14 80 / 16%);
+  --level-info-surface: oklch(0.715 0.015 286.1 / 12%);
+  --level-debug-surface: oklch(0.62 0.006 285.9 / 12%);
+  --status-resolved-surface: oklch(0.76 0.15 158 / 16%);
+
+  --frame-in-app: oklch(0.97 0 0);
+  --frame-vendor: oklch(0.62 0.015 286.1);
+  --frame-focus-surface: oklch(0.75 0.15 30 / 18%);
+}
+
+@theme inline {
+  --font-sans: "Inter Variable", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --color-level-fatal: var(--level-fatal);
+  --color-level-error: var(--level-error);
+  --color-level-warning: var(--level-warning);
+  --color-level-info: var(--level-info);
+  --color-level-debug: var(--level-debug);
+  --color-level-fatal-surface: var(--level-fatal-surface);
+  --color-level-error-surface: var(--level-error-surface);
+  --color-level-warning-surface: var(--level-warning-surface);
+  --color-level-info-surface: var(--level-info-surface);
+  --color-level-debug-surface: var(--level-debug-surface);
+
+  --color-status-unresolved: var(--status-unresolved);
+  --color-status-resolved: var(--status-resolved);
+  --color-status-ignored: var(--status-ignored);
+  --color-status-resolved-surface: var(--status-resolved-surface);
+
+  --color-frame-in-app: var(--frame-in-app);
+  --color-frame-vendor: var(--frame-vendor);
+  --color-frame-focus-surface: var(--frame-focus-surface);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+
+  html {
+    color-scheme: light;
+  }
+
+  html.dark {
+    color-scheme: dark;
+  }
+
+  body {
+    @apply bg-background text-foreground font-sans antialiased;
+    min-width: 320px;
+    min-height: 100dvh;
+  }
+
+  /* Counts, durations and timestamps sit in columns; proportional figures
+     make rows jitter as values change. */
+  th,
+  td,
+  time,
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  :focus-visible {
+    @apply outline-ring outline-2 outline-offset-2;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}

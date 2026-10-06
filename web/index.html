@@ -1,0 +1,33 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="description" content="Faultline incident tracking dashboard" />
+    <title>Faultline</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <script>
+      // Duplicated from src/lib/theme.ts on purpose. The bundle is a module
+      // script, so it is deferred until after the render-blocking stylesheet
+      // lands and the document can already paint — a dark-preference user would
+      // see a white frame. This runs synchronously during parse instead.
+      // The key and the class must stay in step with STORAGE_KEY and DARK_CLASS
+      // there; src/lib/theme.test.ts pins the key against a literal.
+      try {
+        const stored = localStorage.getItem("faultline.theme");
+        const preference =
+          stored === "light" || stored === "dark" || stored === "system" ? stored : "system";
+        const dark =
+          preference === "dark" ||
+          (preference === "system" && window.matchMedia("(prefers-color-scheme: dark)").matches);
+        document.documentElement.classList.toggle("dark", dark);
+      } catch {
+        // Storage or matchMedia unavailable. The bundle's own apply still runs.
+      }
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>

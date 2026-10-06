@@ -1,0 +1,9 @@
+POST /api/0/projects/demo/demo/files/difs/assemble/ HTTP/1.1
+Host: 127.0.0.1:61440
+Accept: */*
+Authorization: Bearer faultline-test-token
+Content-Length: 160
+Content-Type: application/json
+User-Agent: sentry-cli/3.8.0
+
+{"2c4a86fe85e18a7ffc127825adf217fa694a6878":{"name":"/proguard/cd395950-361a-563d-9df3-49aea740c6f6.txt","chunks":["2c4a86fe85e18a7ffc127825adf217fa694a6878"]}}

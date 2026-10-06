@@ -1,0 +1,167 @@
+version: "2"
+
+run:
+  build-tags:
+    - integration
+
+linters:
+  default: standard
+
+  enable:
+    # Error handling: wrapping, sentinels, swallowed and mismatched errors.
+    - errorlint
+    - errname
+    - nilerr
+    - nilnesserr
+
+    # Context discipline: propagation, placement, per-iteration nesting.
+    - containedctx
+    # fatcontext is deliberately absent: its only finding here was the
+    # per-shard `finalCtx` assignment in internal/pipeline (correct, and
+    # synchronised by the channel close that follows it), and its --fix
+    # rewrote that line to `worker.finalCtx := ctx`, which does not compile.
+    - noctx
+
+    # Resource lifetimes: HTTP bodies, sql.Rows, sql.Stmt, pgx queries.
+    - bodyclose
+    - rowserrcheck
+    - sqlclosecheck
+
+    # Panic sources and type-level footguns.
+    - forcetypeassert
+    - makezero
+    - durationcheck
+    - asasalint
+    - recvcheck
+    - reassign
+    - musttag
+
+    # Security.
+    - gosec
+
+    # Correctness and modernization on top of staticcheck/govet.
+    - gocritic
+    - exhaustive
+    - loggercheck
+    - copyloopvar
+    - intrange
+    - modernize
+    - exptostd
+    - usestdlibvars
+    - usetesting
+    - unconvert
+    - wastedassign
+    - predeclared
+    - mirror
+
+    # Hygiene rules this repository already enforces by hand.
+    - unparam
+    - nakedret
+    - goconst
+    - misspell
+    - nolintlint
+
+  settings:
+    errcheck:
+      check-type-assertions: true
+      # check-blank stays off on purpose: this repository uses an explicit
+      # `_ = f()` with a comment to record a deliberate discard, and flagging
+      # that form punishes the visible choice while a silent unchecked call
+      # is the thing worth catching.
+      check-blank: false
+      exclude-functions:
+        # CLI progress output: a failed write to stdout/stderr cannot be
+        # reported anywhere the operator would see it.
+        - fmt.Fprint
+        - fmt.Fprintf
+        - fmt.Fprintln
+        # pgx documents Rollback after a successful Commit as returning
+        # ErrTxClosed, so `defer tx.Rollback(ctx)` is the intended idiom.
+        - (github.com/jackc/pgx/v5.Tx).Rollback
+        # Every call site is a read path, where Close only re-reports the
+        # checksum error the preceding Read already returned.
+        - (*compress/gzip.Reader).Close
+    exhaustive:
+      default-signifies-exhaustive: true
+    goconst:
+      # CLI dispatch-mode names are not magic values: they are literals
+      # throughout command/*.go, so extracting only the ones that happen to
+      # cross the occurrence threshold would be less consistent, not more.
+      # `application/json` needed an entry here until the repeated
+      # `Header().Set(...)` boilerplate went through platform/httpjson, which
+      # is what the finding was really pointing at.
+      ignore-string-values:
+        - '^migrate$'
+    gocritic:
+      enabled-tags:
+        - diagnostic
+        - style
+        - performance
+      disabled-checks:
+        - ifElseChain
+        # Pass-by-pointer performance advice conflicts with the value
+        # semantics this codebase deliberately uses; re-enable only behind
+        # a benchmark that shows the copy matters.
+        - hugeParam
+        - rangeValCopy
+        - unnamedResult
+    gosec:
+      excludes:
+        # G404: math/rand is acceptable for jitter and test fixtures; crypto
+        # paths use crypto/rand and are covered by the remaining rules.
+        - G404
+        # G115: every conversion it flags here is a binary-framing round trip
+        # (int64 <-> PutUint64/Uint64 over a fixed 8-byte field, len() into a
+        # 4-byte length prefix) or a `% shardCount` result, where the
+        # conversion is the encoding rather than a narrowing. The one genuine
+        # narrowing, the int32 advisory-lock key in
+        # storage/postgres/grouping_rules.go, carries its own proof of safety.
+        # Re-enable this if the codebase starts narrowing ids for storage.
+        - G115
+    govet:
+      enable-all: true
+      disable:
+        - fieldalignment
+        # `shadow` reports every nested `if err := ...` redeclaration, which is
+        # idiomatic here and was a defect in none of the 50 sites it flagged.
+        # The bug it gestures at -- checking a fresh err but returning a stale
+        # one -- is what nilerr and nilnesserr detect precisely.
+        - shadow
+    nolintlint:
+      require-explanation: true
+      require-specific: true
+      allow-unused: false
+    staticcheck:
+      checks:
+        - all
+
+  exclusions:
+    generated: lax
+    rules:
+      # internal/testdatabase is test-only infrastructure (no non-test file
+      # imports it): it shells out to docker, writes its own lock files, and
+      # memoises setup errors in package-level vars that are not sentinels.
+      - path: internal/testdatabase/
+        linters:
+          - errname
+          - gosec
+          - noctx
+      - path: _test\.go
+        linters:
+          - containedctx
+          - errcheck
+          - noctx
+          - forcetypeassert
+          - goconst
+          - gosec
+          - musttag
+          - unparam
+
+formatters:
+  enable:
+    - gofmt
+    - goimports
+  settings:
+    goimports:
+      local-prefixes:
+        - github.com/ramilS/faultline

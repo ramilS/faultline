@@ -1,0 +1,1 @@
+sentry-sdk (Python) 2.71.0, captured 2026-09-29 with: internal/ingest/testdata/sdk/capture.sh python python python:3.13-slim sh -c "pip install --quiet sentry-sdk==2.71.0 && pip show sentry-sdk | sed -n 2p && python capture.py"

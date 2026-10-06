@@ -1,0 +1,20 @@
+-- Intentional no-op.
+--
+-- The up migration inserts with ON CONFLICT (issue_id, key, value) DO
+-- NOTHING, so it never merges into a pre-existing row — but any row it does
+-- insert is immediately eligible for the batch writer's own accumulating
+-- upsert (see eventSink.upsertTagValues in internal/storage/postgres/
+-- events.go) the next time a matching event is ingested. By the time anyone
+-- runs this down migration, a backfilled row may already carry
+-- organically-ingested counts merged on top of it, and there is no stored
+-- marker distinguishing "created by this backfill" from "created by normal
+-- ingestion". There is therefore no way to subtract exactly what this
+-- migration added without a snapshot taken before it ran, and a DELETE keyed
+-- on key IN ('environment', 'release') would remove legitimate rows that
+-- ingestion produces regardless of this migration ever having existed —
+-- environment/release are reserved tag keys now, not a backfill artifact.
+--
+-- Rolling back is therefore a deliberate no-op: reversing schema changes is
+-- safe and expected, but reversing this data migration would either do
+-- nothing precise or destroy legitimate facet data. An honest no-op is
+-- preferable to a delete that silently corrupts the facet list.

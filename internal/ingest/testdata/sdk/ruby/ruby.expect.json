@@ -1,0 +1,6 @@
+{
+  "sdk_name": "sentry.ruby",
+  "outer_type": "CheckoutError",
+  "culprit_contains": "charge_card",
+  "culprit_excludes": ["run_checkout"]
+}

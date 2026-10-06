@@ -1,0 +1,50 @@
+# Build output
+/bin/
+/faultline
+/internal/dashboard/dist/*
+!/internal/dashboard/dist/.gitkeep
+/web/dist/
+/.worktrees/
+
+# Dependencies
+/node_modules/
+**/node_modules/
+
+# Local configuration
+.env
+
+# Editors and operating systems
+.DS_Store
+.idea/
+.vscode/
+
+# Local Docker Compose bind-mount data (Postgres, spill dir)
+/.data/
+
+# E2E harness's Python dependency cache and bytecode (its Node dependencies
+# follow the same node_modules/package-lock.json convention as the root
+# workspace)
+/e2e/.venv/
+/e2e/__pycache__/
+
+# AI-agent tooling and its output: personal workflow, kept on disk, never published
+/.claude/
+/_bmad/
+/_bmad-output/
+/.superpowers/
+/.remember/
+
+# Kotlin compiler's local cache
+/.kotlin/
+
+# Composer output from regenerating the PHP SDK fixture
+/internal/ingest/testdata/sdk/php/src/vendor/
+/internal/ingest/testdata/sdk/php/src/composer.*
+
+# Cargo output from regenerating the Rust SDK fixture
+/internal/ingest/testdata/sdk/rust/src/target/
+/internal/ingest/testdata/sdk/rust/src/Cargo.lock
+
+# Scala CLI output from regenerating the Scala SDK fixture
+/internal/ingest/testdata/sdk/scala/src/.bsp/
+/internal/ingest/testdata/sdk/scala/src/.scala-build/

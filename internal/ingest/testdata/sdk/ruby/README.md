@@ -1,0 +1,1 @@
+sentry-ruby 7.1.0 (gem), captured 2026-09-29 with: internal/ingest/testdata/sdk/capture.sh ruby ruby ruby:3.4 sh -c "gem install --no-document sentry-ruby -v 7.1.0 && gem list sentry-ruby && ruby app/capture.rb"

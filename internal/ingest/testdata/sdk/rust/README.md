@@ -1,0 +1,1 @@
+sentry 0.49.3 (crate, rust:1 with rustc 1.98.1), captured 2026-09-29 with: internal/ingest/testdata/sdk/capture.sh rust rust rust:1 sh -c "cargo run --quiet && grep -A1 'name = \"sentry\"' Cargo.lock | head -2"

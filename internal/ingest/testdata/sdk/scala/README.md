@@ -1,0 +1,1 @@
+io.sentry:sentry 8.58.0 (Maven Central, pinned in src/Capture.scala; virtuslab/scala-cli image, Scala 3.9.0 on JVM 17), captured 2026-09-29 with: internal/ingest/testdata/sdk/capture.sh scala scala virtuslab/scala-cli run Capture.scala

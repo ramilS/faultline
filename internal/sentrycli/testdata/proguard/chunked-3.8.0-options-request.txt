@@ -1,0 +1,6 @@
+GET /api/0/organizations/demo/chunk-upload/ HTTP/1.1
+Host: 127.0.0.1:61440
+Accept: */*
+Authorization: Bearer faultline-test-token
+User-Agent: sentry-cli/3.8.0
+

@@ -1,0 +1,6 @@
+{
+  "sdk_name": "sentry.php",
+  "outer_type": "CheckoutError",
+  "culprit_contains": "chargeCard",
+  "culprit_excludes": ["runCheckout"]
+}

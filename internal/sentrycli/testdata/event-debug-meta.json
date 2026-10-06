@@ -1,0 +1,9 @@
+{
+  "images": [
+    {
+      "type": "sourcemap",
+      "code_file": "http://127.0.0.1:19000/app.js",
+      "debug_id": "003d8ac6-6080-5f78-8e37-8aa45ca5ee8a"
+    }
+  ]
+}
