@@ -1,0 +1,57 @@
+# Production deployment for Coolify (or any host behind a TLS-terminating proxy).
+# Runs the prebuilt image from GHCR, so the server never builds; publishes no
+# host ports, so the proxy is the only way in and Postgres stays private.
+services:
+  faultline:
+    image: "ghcr.io/ramils/faultline:${FAULTLINE_TAG:-latest}"
+    environment:
+      FAULTLINE_ADDR: ":8080"
+      FAULTLINE_COOKIE_SECURE: "true"
+      DATABASE_URL: "postgres://faultline:${POSTGRES_PASSWORD:?}@db:5432/faultline?sslmode=disable"
+      DATABASE_MAX_CONNS: "${DATABASE_MAX_CONNS:-5}"
+      SPILL_DIR: /var/lib/faultline/spill
+      FAULTLINE_OIDC_CLIENT_ID: "${FAULTLINE_OIDC_CLIENT_ID:-}"
+      FAULTLINE_OIDC_ISSUER: "${FAULTLINE_OIDC_ISSUER:-}"
+      FAULTLINE_OIDC_CLIENT_SECRET: "${FAULTLINE_OIDC_CLIENT_SECRET:-}"
+      FAULTLINE_OIDC_REDIRECT_URL: "${FAULTLINE_OIDC_REDIRECT_URL:-}"
+      FAULTLINE_OIDC_ALLOWED_HD: "${FAULTLINE_OIDC_ALLOWED_HD:-}"
+    volumes:
+      - spill:/var/lib/faultline/spill
+    mem_limit: "${FAULTLINE_MEM_LIMIT:-384m}"
+    depends_on:
+      db:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "-q", "-O", "-", "http://127.0.0.1:8080/readyz"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 5s
+    restart: unless-stopped
+
+  db:
+    image: timescale/timescaledb:latest-pg18@sha256:9508616d5b941ed931198504c5db3fb47e8f53f790732ea1e889591f1062057c
+    environment:
+      POSTGRES_DB: faultline
+      POSTGRES_USER: faultline
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?}"
+    volumes:
+      - pgdata:/var/lib/postgresql
+    mem_limit: "${POSTGRES_MEM_LIMIT:-512m}"
+    shm_size: 128m
+    command:
+      - postgres
+      - -c
+      - shared_buffers=${POSTGRES_SHARED_BUFFERS:-128MB}
+      - -c
+      - max_wal_size=1GB
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U faultline -d faultline"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  spill:
+  pgdata:
