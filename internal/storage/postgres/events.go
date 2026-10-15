@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"slices"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -11,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ramilS/faultline/internal/ingest"
+	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/storage"
 )
 
@@ -29,7 +31,8 @@ type eventSink struct {
 var _ storage.EventSink = (*eventSink)(nil)
 
 // NewEventSink returns a storage.EventSink that persists batches into the
-// releases, issues, events, and issue_tag_values tables backed by pool.
+// releases, issues, events, and issue_tag_values tables backed by pool, and
+// queues a notification delivery for every issue a batch creates or reopens.
 func NewEventSink(pool *pgxpool.Pool) storage.EventSink {
 	return &eventSink{pool: pool}
 }
@@ -53,7 +56,7 @@ func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) er
 	if err := insertReleases(ctx, tx, batch); err != nil {
 		return err
 	}
-	issueIDs, err := upsertIssues(ctx, tx, batch)
+	issueIDs, transitions, err := upsertIssues(ctx, tx, batch)
 	if err != nil {
 		return err
 	}
@@ -67,6 +70,9 @@ func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) er
 		return err
 	}
 	if err := upsertUserIdentities(ctx, tx, batch, issueIDs); err != nil {
+		return err
+	}
+	if err := enqueueNotifications(ctx, tx, batch.ProjectID, issueChanges(batch, issueIDs, transitions)); err != nil {
 		return err
 	}
 
@@ -91,8 +97,37 @@ func insertReleases(ctx context.Context, tx pgx.Tx, batch storage.Batch) error {
 	return nil
 }
 
+// issueTransition is an issue a batch created or reopened from resolved —
+// the two changes channels can be notified of.
+type issueTransition struct {
+	trigger notify.Trigger
+	level   string
+}
+
+// issueChanges attaches to each transition the environments of the batch's
+// events that landed on that issue, for the channels' environment filter.
+func issueChanges(batch storage.Batch, issueIDs map[string]int64, transitions map[int64]issueTransition) []notify.IssueChange {
+	if len(transitions) == 0 {
+		return nil
+	}
+	environments := make(map[int64][]string, len(transitions))
+	for _, event := range batch.Events {
+		issueID := issueIDs[event.Fingerprint]
+		if _, ok := transitions[issueID]; ok && !slices.Contains(environments[issueID], event.Environment) {
+			environments[issueID] = append(environments[issueID], event.Environment)
+		}
+	}
+	changes := make([]notify.IssueChange, 0, len(transitions))
+	for issueID, transition := range transitions {
+		changes = append(changes, notify.IssueChange{IssueID: issueID, Trigger: transition.trigger, Level: transition.level, Environments: environments[issueID]})
+	}
+	return changes
+}
+
 // upsertIssues resolves each batch fingerprint to an issue id, folding in
-// its counters. Ordinary fingerprints go through the normal
+// its counters, and reports which issues it created or reopened. Reopening is
+// read from RETURNING OLD (PostgreSQL 18), which sees the row as it was
+// before this statement, so no separate read can race a concurrent resolve. Ordinary fingerprints go through the normal
 // INSERT ... ON CONFLICT below; fingerprints that belong to a tombstoned
 // issue (a merge source) are redirected to the merge target instead — see
 // resolveMergeTombstones. This is what keeps a merge-aliased signal from
@@ -101,10 +136,11 @@ func insertReleases(ctx context.Context, tx pgx.Tx, batch storage.Batch) error {
 // stale or never gets a chance to run (see grouping.EvaluateRules's doc
 // comment on why a text-rule-derived fingerprint needs this structural
 // backstop too).
-func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[string]int64, error) {
+func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[string]int64, map[int64]issueTransition, error) {
 	issueIDs := make(map[string]int64, len(batch.Issues))
+	transitions := make(map[int64]issueTransition)
 	if len(batch.Issues) == 0 {
-		return issueIDs, nil
+		return issueIDs, transitions, nil
 	}
 
 	fingerprints := make([]string, len(batch.Issues))
@@ -113,7 +149,7 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 	}
 	tombstoneTargets, err := resolveMergeTombstones(ctx, tx, batch.ProjectID, fingerprints)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 
 	fresh := make([]storage.IssueDelta, 0, len(batch.Issues))
@@ -133,12 +169,12 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 	}
 
 	if len(redirected) > 0 {
-		if err := applyTombstoneRedirectCounters(ctx, tx, redirected); err != nil {
-			return nil, err
+		if err := applyTombstoneRedirectCounters(ctx, tx, redirected, transitions); err != nil {
+			return nil, nil, err
 		}
 	}
 	if len(fresh) == 0 {
-		return issueIDs, nil
+		return issueIDs, transitions, nil
 	}
 
 	count := len(fresh)
@@ -168,10 +204,10 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 			SET last_seen  = GREATEST(issues.last_seen, EXCLUDED.last_seen),
 			    times_seen = issues.times_seen + EXCLUDED.times_seen,
 			    status     = CASE WHEN issues.status = 'resolved' THEN 'unresolved' ELSE issues.status END
-		RETURNING id, fingerprint
+		RETURNING new.id, new.fingerprint, new.level, old.id IS NULL, COALESCE(old.status = 'resolved', false)
 	`, batch.ProjectID, insertFingerprints, titles, culprits, levels, firstSeen, lastSeen, timesSeen)
 	if err != nil {
-		return nil, fmt.Errorf("upsert issues: %w", err)
+		return nil, nil, fmt.Errorf("upsert issues: %w", err)
 	}
 	defer rows.Close()
 
@@ -179,16 +215,25 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 		var (
 			id          int64
 			fingerprint string
+			level       string
+			inserted    bool
+			reopened    bool
 		)
-		if err := rows.Scan(&id, &fingerprint); err != nil {
-			return nil, fmt.Errorf("scan upserted issue: %w", err)
+		if err := rows.Scan(&id, &fingerprint, &level, &inserted, &reopened); err != nil {
+			return nil, nil, fmt.Errorf("scan upserted issue: %w", err)
 		}
 		issueIDs[fingerprint] = id
+		switch {
+		case inserted:
+			transitions[id] = issueTransition{trigger: notify.TriggerNew, level: level}
+		case reopened:
+			transitions[id] = issueTransition{trigger: notify.TriggerRegression, level: level}
+		}
 	}
 	if err := rows.Err(); err != nil {
-		return nil, fmt.Errorf("iterate upserted issues: %w", err)
+		return nil, nil, fmt.Errorf("iterate upserted issues: %w", err)
 	}
-	return issueIDs, nil
+	return issueIDs, transitions, nil
 }
 
 // resolveMergeTombstones looks up, in one query, which of fingerprints
@@ -232,7 +277,10 @@ func resolveMergeTombstones(ctx context.Context, tx pgx.Tx, projectID int64, fin
 // tombstone row itself. One batched UPDATE regardless of how many
 // fingerprints redirected to how many targets, so this stays cheap on the
 // per-flush hot path.
-func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected map[int64]storage.IssueDelta) error {
+//
+// A merge target that was resolved is reopened here too, and recorded in
+// transitions as a regression.
+func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected map[int64]storage.IssueDelta, transitions map[int64]issueTransition) error {
 	ids := make([]int64, 0, len(redirected))
 	timesSeen := make([]int64, 0, len(redirected))
 	firstSeen := make([]time.Time, 0, len(redirected))
@@ -243,7 +291,7 @@ func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected m
 		firstSeen = append(firstSeen, delta.FirstSeen)
 		lastSeen = append(lastSeen, delta.LastSeen)
 	}
-	_, err := tx.Exec(ctx, `
+	rows, err := tx.Query(ctx, `
 		UPDATE issues SET
 			last_seen  = GREATEST(issues.last_seen, u.last_seen),
 			first_seen = LEAST(issues.first_seen, u.first_seen),
@@ -251,9 +299,27 @@ func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected m
 			status     = CASE WHEN issues.status = 'resolved' THEN 'unresolved' ELSE issues.status END
 		FROM unnest($1::bigint[], $2::bigint[], $3::timestamptz[], $4::timestamptz[]) AS u(id, times_seen, first_seen, last_seen)
 		WHERE issues.id = u.id
+		RETURNING new.id, new.level, old.status = 'resolved'
 	`, ids, timesSeen, firstSeen, lastSeen)
 	if err != nil {
 		return fmt.Errorf("apply tombstone redirect counters: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id       int64
+			level    string
+			reopened bool
+		)
+		if err := rows.Scan(&id, &level, &reopened); err != nil {
+			return fmt.Errorf("scan tombstone redirect target: %w", err)
+		}
+		if reopened {
+			transitions[id] = issueTransition{trigger: notify.TriggerRegression, level: level}
+		}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate tombstone redirect targets: %w", err)
 	}
 	return nil
 }

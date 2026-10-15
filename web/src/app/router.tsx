@@ -18,6 +18,7 @@ import { DataScrubbingPage } from "@/features/settings/DataScrubbingPage";
 import { GlobalDataScrubbingPage } from "@/features/settings/GlobalDataScrubbingPage";
 import { GroupingRulesPage } from "@/features/settings/GroupingRulesPage";
 import { KeysPage } from "@/features/settings/KeysPage";
+import { NotificationsPage } from "@/features/settings/NotificationsPage";
 import { ProjectGeneralPage } from "@/features/settings/ProjectGeneralPage";
 import { UsersPage } from "@/features/users/UsersPage";
 
@@ -85,6 +86,14 @@ export function AppRouter() {
           <Route path="/:slug/settings/artifact-tokens" element={<ArtifactTokensPage />} />
           <Route path="/:slug/settings/grouping" element={<GroupingRulesPage />} />
           <Route path="/:slug/settings/data-scrubbing" element={<DataScrubbingPage />} />
+          <Route
+            path="/:slug/settings/notifications"
+            element={
+              <RequireOwner subject="notifications">
+                <NotificationsPage />
+              </RequireOwner>
+            }
+          />
           <Route path="*" element={<NotFoundPage />} />
         </Route>
       </Routes>

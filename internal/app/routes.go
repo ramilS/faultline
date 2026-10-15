@@ -182,6 +182,23 @@ func dataScrubbingRoutes(dependencies Dependencies) []route {
 	}
 }
 
+// notificationRoutes covers a project's notification channels. Every route
+// is owner-only, reads included: a webhook URL can itself be a credential.
+// It registers nothing when no service is wired.
+func notificationRoutes(dependencies Dependencies) []route {
+	if dependencies.NotificationService == nil {
+		return nil
+	}
+	handler := api.NewNotificationHandler(dependencies.NotificationService, dependencies.ProjectService, api.Options{ReportError: dependencies.ReportError})
+	return []route{
+		{pattern: "GET /api/v1/projects/{slug}/notification-channels", gate: gateOwner, handler: http.HandlerFunc(handler.List)},
+		{pattern: "POST /api/v1/projects/{slug}/notification-channels", gate: gateOwner, handler: http.HandlerFunc(handler.Create)},
+		{pattern: "PUT /api/v1/projects/{slug}/notification-channels/{id}", gate: gateOwner, handler: http.HandlerFunc(handler.Update)},
+		{pattern: "DELETE /api/v1/projects/{slug}/notification-channels/{id}", gate: gateOwner, handler: http.HandlerFunc(handler.Delete)},
+		{pattern: "POST /api/v1/projects/{slug}/notification-channels/{id}/test", gate: gateOwner, handler: http.HandlerFunc(handler.SendTest)},
+	}
+}
+
 // globalDataScrubbingRoutes covers the instance-wide scrubbing rules, which
 // only an owner may read or change. It registers nothing when no service is
 // wired, independently of the per-project routes.

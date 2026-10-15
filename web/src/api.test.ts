@@ -710,3 +710,77 @@ test("updateGlobalScrubbing PUTs the rules as JSON", async () => {
   assert.deepEqual(JSON.parse(calls[0].init.body as string), { rules });
   assert.deepEqual(scrubbing, { rules });
 });
+
+const notificationChannelInput = {
+  name: "Ops",
+  kind: "telegram" as const,
+  target: "-1001234567890",
+  secret: "123456789:token",
+  enabled: true,
+  notify_new: true,
+  notify_regression: false,
+  environments: ["production"],
+  min_level: "error" as const,
+};
+
+test("listNotificationChannels issues a same-origin GET and unwraps channels", async () => {
+  const { fetch, calls } = recordingFetch(
+    jsonResponse(200, {
+      channels: [{ ...notificationChannelInput, id: 3, secret: undefined, has_secret: true, last_success_at: null, last_error: "telegram: HTTP 403", last_error_at: "2026-10-15T09:00:00Z", created_at: "2026-10-15T08:00:00Z" }],
+    }),
+  );
+  const api = createApi(fetch);
+
+  const channels = await api.listNotificationChannels("web shop");
+
+  assert.equal(calls[0].url, "/api/v1/projects/web%20shop/notification-channels");
+  assert.equal(calls[0].init.method, "GET");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(channels[0].has_secret, true);
+  assert.equal(channels[0].last_error, "telegram: HTTP 403");
+});
+
+test("createNotificationChannel posts the whole input", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(201, { ...notificationChannelInput, id: 3 }));
+  const api = createApi(fetch);
+
+  await api.createNotificationChannel("web", notificationChannelInput);
+
+  assert.equal(calls[0].url, "/api/v1/projects/web/notification-channels");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), notificationChannelInput);
+});
+
+test("updateNotificationChannel PUTs by id and leaves an omitted secret out of the body", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(200, { ...notificationChannelInput, id: 3 }));
+  const api = createApi(fetch);
+  const { secret: _omitted, ...withoutSecret } = notificationChannelInput;
+
+  await api.updateNotificationChannel("web", 3, withoutSecret);
+
+  assert.equal(calls[0].url, "/api/v1/projects/web/notification-channels/3");
+  assert.equal(calls[0].init.method, "PUT");
+  assert.equal("secret" in JSON.parse(calls[0].init.body as string), false);
+});
+
+test("deleteNotificationChannel sends DELETE and expects no content", async () => {
+  const { fetch, calls } = recordingFetch(new Response(null, { status: 204 }));
+  const api = createApi(fetch);
+
+  await api.deleteNotificationChannel("web", 3);
+
+  assert.equal(calls[0].url, "/api/v1/projects/web/notification-channels/3");
+  assert.equal(calls[0].init.method, "DELETE");
+});
+
+test("testNotificationChannel surfaces the destination's refusal from a 502", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(502, { error: "telegram: HTTP 400: Bad Request: chat not found" }));
+  const api = createApi(fetch);
+
+  await assert.rejects(
+    () => api.testNotificationChannel("web", 3),
+    (error: unknown) => error instanceof ApiError && error.status === 502 && error.message === "telegram: HTTP 400: Bad Request: chat not found",
+  );
+  assert.equal(calls[0].url, "/api/v1/projects/web/notification-channels/3/test");
+  assert.equal(calls[0].init.method, "POST");
+});

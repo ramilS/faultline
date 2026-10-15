@@ -282,6 +282,50 @@ export interface GlobalScrubbing {
   rules: ScrubRule[];
 }
 
+export type NotificationChannelKind = "telegram" | "webhook";
+
+export type NotificationLevel = "debug" | "info" | "warning" | "error" | "fatal";
+
+/**
+ * A destination for a project's new-issue and regression alerts. The secret
+ * (bot token or webhook signing key) is write-only: the server only ever says
+ * whether one is set.
+ */
+export interface NotificationChannel {
+  id: number;
+  name: string;
+  kind: NotificationChannelKind;
+  /** A Telegram chat id or @username, or a webhook URL. */
+  target: string;
+  has_secret: boolean;
+  enabled: boolean;
+  notify_new: boolean;
+  notify_regression: boolean;
+  /** Empty means every environment. */
+  environments: string[];
+  min_level: NotificationLevel;
+  last_success_at: string | null;
+  last_error: string | null;
+  last_error_at: string | null;
+  created_at: string;
+}
+
+/**
+ * Create or full update. Omitting `secret` on update keeps the stored one;
+ * `kind` cannot change after creation.
+ */
+export interface NotificationChannelInput {
+  name: string;
+  kind: NotificationChannelKind;
+  target: string;
+  secret?: string;
+  enabled: boolean;
+  notify_new: boolean;
+  notify_regression: boolean;
+  environments: string[];
+  min_level: NotificationLevel;
+}
+
 export interface GroupingRule {
   id: number;
   project_id: number;
@@ -447,6 +491,12 @@ export interface FaultlineApi {
   updateDataScrubbing(slug: string, input: DataScrubbing): Promise<DataScrubbing>;
   getGlobalScrubbing(): Promise<GlobalScrubbing>;
   updateGlobalScrubbing(input: GlobalScrubbing): Promise<GlobalScrubbing>;
+  listNotificationChannels(slug: string): Promise<NotificationChannel[]>;
+  createNotificationChannel(slug: string, input: NotificationChannelInput): Promise<NotificationChannel>;
+  updateNotificationChannel(slug: string, channelId: number, input: NotificationChannelInput): Promise<NotificationChannel>;
+  deleteNotificationChannel(slug: string, channelId: number): Promise<void>;
+  /** Sends a sample message now; rejects with the destination's own error when it refuses. */
+  testNotificationChannel(slug: string, channelId: number): Promise<void>;
   listGroupingRules(slug: string): Promise<GroupingRule[]>;
   createGroupingRule(slug: string, input: CreateGroupingRuleInput): Promise<GroupingRule>;
   updateGroupingRule(slug: string, ruleId: number, input: UpdateGroupingRuleInput): Promise<GroupingRule>;
@@ -638,6 +688,22 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
     deleteGroupingRule: async (slug, ruleId) => {
       await request<void>(fetchImpl, `${groupingRulesPath(slug)}/${ruleId}`, { method: "DELETE", expectNoContent: true });
     },
+    listNotificationChannels: async (slug) => {
+      const body = await request<{ channels: NotificationChannel[] }>(fetchImpl, notificationChannelsPath(slug), { method: "GET" });
+      return body.channels;
+    },
+    createNotificationChannel: async (slug, input) => {
+      return request<NotificationChannel>(fetchImpl, notificationChannelsPath(slug), { method: "POST", json: input });
+    },
+    updateNotificationChannel: async (slug, channelId, input) => {
+      return request<NotificationChannel>(fetchImpl, `${notificationChannelsPath(slug)}/${channelId}`, { method: "PUT", json: input });
+    },
+    deleteNotificationChannel: async (slug, channelId) => {
+      await request<void>(fetchImpl, `${notificationChannelsPath(slug)}/${channelId}`, { method: "DELETE", expectNoContent: true });
+    },
+    testNotificationChannel: async (slug, channelId) => {
+      await request<void>(fetchImpl, `${notificationChannelsPath(slug)}/${channelId}/test`, { method: "POST", expectNoContent: true });
+    },
     mergeIssue: async (id, targetId) => {
       return request<IssueDetail>(fetchImpl, `/api/v1/issues/${id}/merge`, { method: "POST", json: { target_id: targetId } });
     },
@@ -765,6 +831,10 @@ function keysPath(slug: string): string {
 
 function dataScrubbingPath(slug: string): string {
   return `/api/v1/projects/${encodeURIComponent(slug)}/data-scrubbing`;
+}
+
+function notificationChannelsPath(slug: string): string {
+  return `/api/v1/projects/${encodeURIComponent(slug)}/notification-channels`;
 }
 
 function groupingRulesPath(slug: string): string {

@@ -11,6 +11,7 @@ import (
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
+	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/platform/config"
 	platformpostgres "github.com/ramilS/faultline/internal/platform/postgres"
 	"github.com/ramilS/faultline/internal/proguard"
@@ -54,6 +55,11 @@ type runtimeDatabase struct {
 	ProjectSettings *ingest.ProjectSettingsCache
 	// Scrubbing reads and writes a project's data-scrubbing configuration.
 	Scrubbing scrub.Repository
+	// NotificationChannels and NotificationQueue back issue notifications:
+	// the dashboard's channel editor and the background delivery worker.
+	// Either may be nil in tests, which then run without notifications.
+	NotificationChannels notify.ChannelRepository
+	NotificationQueue    notify.Queue
 	// GroupingRules is the full CRUD repository backing the dashboard's
 	// grouping-rule editor (grouping.NewRuleService). It is a separate handle
 	// on the same underlying storage GroupingRuleCache reads through — not a
@@ -107,25 +113,27 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 	projectSettings := storagepostgres.NewProjectSettingsStore(pool)
 	artifactQuota := storagepostgres.WithArtifactQuota(configuration.ArtifactQuotaBytes)
 	return &runtimeDatabase{
-		Pool:              pool,
-		Users:             authRepositories.Users,
-		Sessions:          authRepositories.Sessions,
-		Identities:        authRepositories.Identities,
-		Projects:          projectRepositories.Projects,
-		Keys:              projectRepositories.Keys,
-		Issues:            issues,
-		Access:            storagepostgres.NewAccessRepository(pool),
-		ArtifactTokens:    storagepostgres.NewArtifactTokenRepository(pool),
-		Groups:            storagepostgres.NewGroupRepository(pool),
-		SourceMaps:        storagepostgres.NewSourceMapRepository(pool, artifactQuota),
-		Proguard:          storagepostgres.NewProguardMappingRepository(pool, artifactQuota),
-		UploadChunks:      storagepostgres.NewUploadChunkStore(pool),
-		Releases:          storagepostgres.NewReleaseStore(pool),
-		GroupingRules:     groupingRules,
-		IngestKeys:        storagepostgres.NewIngestKeyStore(pool),
-		EventSink:         storagepostgres.NewEventSink(pool),
-		GroupingRuleCache: ruleCache,
-		ProjectSettings:   ingest.NewProjectSettingsCache(projectSettings, time.Now),
-		Scrubbing:         projectSettings,
+		Pool:                 pool,
+		Users:                authRepositories.Users,
+		Sessions:             authRepositories.Sessions,
+		Identities:           authRepositories.Identities,
+		Projects:             projectRepositories.Projects,
+		Keys:                 projectRepositories.Keys,
+		Issues:               issues,
+		Access:               storagepostgres.NewAccessRepository(pool),
+		ArtifactTokens:       storagepostgres.NewArtifactTokenRepository(pool),
+		Groups:               storagepostgres.NewGroupRepository(pool),
+		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactQuota),
+		Proguard:             storagepostgres.NewProguardMappingRepository(pool, artifactQuota),
+		UploadChunks:         storagepostgres.NewUploadChunkStore(pool),
+		Releases:             storagepostgres.NewReleaseStore(pool),
+		GroupingRules:        groupingRules,
+		IngestKeys:           storagepostgres.NewIngestKeyStore(pool),
+		EventSink:            storagepostgres.NewEventSink(pool),
+		GroupingRuleCache:    ruleCache,
+		ProjectSettings:      ingest.NewProjectSettingsCache(projectSettings, time.Now),
+		Scrubbing:            projectSettings,
+		NotificationChannels: storagepostgres.NewNotificationChannelRepository(pool),
+		NotificationQueue:    storagepostgres.NewNotificationQueue(pool),
 	}, nil
 }

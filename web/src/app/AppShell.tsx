@@ -52,7 +52,7 @@ export function AppShell() {
       ? candidateSlug
       : null;
 
-  const scoped = slug === null ? [] : projectNavItems(slug);
+  const scoped = slug === null || session.state !== "authenticated" ? [] : projectNavItems(slug, session.user.role);
   const global = session.state === "authenticated" ? globalNavItems(session.user.role) : [];
 
   return (

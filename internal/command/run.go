@@ -20,6 +20,7 @@ import (
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
+	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/pipeline"
 	"github.com/ramilS/faultline/internal/platform/config"
 	"github.com/ramilS/faultline/internal/platform/httpserver"
@@ -316,6 +317,36 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 	}
 
 	scrubService := scrub.NewService(database.Scrubbing)
+
+	notificationSender := notify.NewSender(notify.SenderOptions{AllowPrivateNetworks: configuration.WebhookAllowPrivate})
+	var notificationService api.NotificationService
+	if database.NotificationChannels != nil {
+		notificationService = notify.NewService(database.NotificationChannels, notificationSender, notify.ServiceOptions{
+			PublicURL:            configuration.PublicURL,
+			AllowPrivateNetworks: configuration.WebhookAllowPrivate,
+		})
+	}
+	if database.NotificationQueue != nil {
+		worker := notify.NewWorker(database.NotificationQueue, notificationSender, notify.WorkerOptions{
+			PublicURL: configuration.PublicURL,
+			ReportError: func(err error) {
+				fmt.Fprintf(stderr, "faultline: notifications: %v\n", err)
+			},
+		})
+		workerCtx, stopWorker := context.WithCancel(context.Background())
+		workerDone := make(chan struct{})
+		go func() {
+			defer close(workerDone)
+			worker.Run(workerCtx)
+		}()
+		// A send cut off here is retried by whichever instance claims it once
+		// its lease expires, so shutdown does not wait for in-flight sends.
+		defer func() {
+			stopWorker()
+			<-workerDone
+		}()
+	}
+
 	handler := app.New(app.Dependencies{
 		Database:                   database.Pool,
 		AuthService:                authService,
@@ -330,6 +361,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		GroupingRuleService:        groupingRuleService,
 		DataScrubbingService:       scrubService,
 		GlobalDataScrubbingService: scrubService,
+		NotificationService:        notificationService,
 		GroupService:               groupService,
 		EnvelopeHandler:            http.HandlerFunc(envelopeHandler.ServeSentry),
 		LoginLimiter:               loginLimiter,

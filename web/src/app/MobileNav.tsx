@@ -30,7 +30,8 @@ export function MobileNav({ slug }: { slug: string | null }) {
   const { preference, setPreference } = useTheme();
   const ThemeIcon = THEME_ICONS[preference];
   const global = session.state === "authenticated" ? globalNavItems(session.user.role) : [];
-  const items = [...global, ...(slug === null ? [] : projectNavItems(slug))];
+  const scoped = slug === null || session.state !== "authenticated" ? [] : projectNavItems(slug, session.user.role);
+  const items = [...global, ...scoped];
 
   return (
     <DropdownMenu>

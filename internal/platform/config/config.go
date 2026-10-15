@@ -97,9 +97,16 @@ func (c SSOConfig) Enabled() bool { return c.ClientID != "" }
 type Config struct {
 	Address      string
 	CookieSecure bool
-	Database     DatabaseConfig
-	Durability   DurabilityConfig
-	SSO          SSOConfig
+	// PublicURL is the dashboard's external base URL, used to link to issues
+	// from notifications. Empty means notifications carry no link.
+	PublicURL string
+	// WebhookAllowPrivate lets notification webhooks reach private network
+	// addresses. Off by default: the server can reach what an outside caller
+	// cannot, so an owner-supplied URL must not open that by default.
+	WebhookAllowPrivate bool
+	Database            DatabaseConfig
+	Durability          DurabilityConfig
+	SSO                 SSOConfig
 }
 
 // Load reads configuration from the environment and rejects invalid values.
@@ -198,9 +205,20 @@ func Load() (Config, error) {
 		return Config{}, err
 	}
 
+	publicURL, err := loadPublicURL()
+	if err != nil {
+		return Config{}, err
+	}
+	webhookAllowPrivate, err := boolValue("FAULTLINE_WEBHOOK_ALLOW_PRIVATE", false)
+	if err != nil {
+		return Config{}, err
+	}
+
 	return Config{
-		Address:      address,
-		CookieSecure: cookieSecure,
+		Address:             address,
+		CookieSecure:        cookieSecure,
+		PublicURL:           publicURL,
+		WebhookAllowPrivate: webhookAllowPrivate,
 		Database: DatabaseConfig{
 			URL:                databaseURL,
 			MaxConns:           maxConns,
@@ -220,6 +238,22 @@ func Load() (Config, error) {
 		},
 		SSO: sso,
 	}, nil
+}
+
+// loadPublicURL reads the optional FAULTLINE_PUBLIC_URL, without a trailing
+// slash. It must be an absolute http(s) URL: it is pasted into links people
+// click from a chat, so a relative or schemeless value would produce links
+// that go nowhere.
+func loadPublicURL() (string, error) {
+	raw := strings.TrimRight(strings.TrimSpace(os.Getenv("FAULTLINE_PUBLIC_URL")), "/")
+	if raw == "" {
+		return "", nil
+	}
+	parsed, err := url.Parse(raw)
+	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
+		return "", fmt.Errorf("FAULTLINE_PUBLIC_URL must be an absolute http or https URL")
+	}
+	return raw, nil
 }
 
 // loadSSO reads optional OIDC settings from the environment. It returns a

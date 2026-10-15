@@ -38,6 +38,8 @@ into the binary; there is no separate service, queue, or worker to run.
   a resolved issue recurs. *All issues* lists every project you can access in one
   stream; environment, release, and tag pickers stay per project, because tag values
   belong to a project.
+- **Notifications** — a Telegram message or a webhook call when an issue first
+  appears or a resolved one recurs (see [Notifications](#notifications)).
 - **Issue detail** — occurrence charts, tag facets, event paging, request timelines,
   browser stack traces symbolicated from uploaded source maps, and Android stack
   traces retraced from uploaded ProGuard/R8 mappings.
@@ -147,6 +149,64 @@ Each project may store 1 GiB (uncompressed) of source maps and mappings
 combined; an upload that would exceed it is refused with `413`. Re-uploading
 content the project already holds always succeeds. Set
 `FAULTLINE_ARTIFACT_QUOTA_BYTES` to change the cap, or to `0` to remove it.
+
+## Notifications
+
+Owners add channels per project under *Notifications*: a Telegram chat (bot token
+from [@BotFather](https://t.me/BotFather) plus a chat id or `@channel` username;
+add the bot to the chat first) or a webhook URL. Each channel chooses new issues,
+regressions (a resolved issue seen again), or both, a minimum level, and
+optionally a list of environments. *Test* sends a sample message right away and
+shows the destination's own error if it refuses.
+
+The environment filter is judged on the events that created or reopened the
+issue: an issue first seen in `staging` does not notify a `production`-only
+channel, and later production events for it do not either, because the issue is
+no longer new.
+
+Set `FAULTLINE_PUBLIC_URL` (for example `https://faultline.example.com`) to put a
+link to the issue in each message; without it messages carry no link.
+
+Delivery is at least once. The notification is queued in the same transaction
+that creates or reopens the issue, then sent in the background and retried with
+backoff (30s doubling to an hour, or longer if the destination's `Retry-After`
+asks for it) for up to 8 attempts. A rejection that retrying cannot fix, such as
+a bad token or a 404, is not retried. The latest failure is shown on the
+channel. Bot tokens and signing secrets are stored in the database in plain
+text and are never returned by the API.
+
+A webhook receives `POST` with a JSON body:
+
+```json
+{
+  "event": "issue.new",
+  "delivery_id": 42,
+  "sent_at": "2026-10-15T09:30:00Z",
+  "project": { "slug": "shop", "name": "Shop" },
+  "issue": { "id": 7, "title": "TypeError: x is undefined", "culprit": "app.js", "level": "error", "url": "https://faultline.example.com/shop/issues/7" },
+  "environment": "production"
+}
+```
+
+`event` is `issue.new` or `issue.regression`, also sent as the
+`X-Faultline-Event` header; `issue.url` is `null` without a public URL. A retry
+repeats the same `X-Faultline-Delivery` id, so a receiver can drop duplicates.
+With a signing secret set, `X-Faultline-Timestamp` carries Unix seconds and
+`X-Faultline-Signature` is `sha256=` followed by the hex HMAC-SHA256, under the
+secret, of the timestamp, a `.`, and the raw body. Redirects are not followed.
+
+The request leaves from the Faultline server, which can reach what an outside
+caller cannot, so a webhook URL is not allowed to point inside. Loopback
+(`localhost`, `127.0.0.0/8`, `::1`), link-local (including the cloud metadata
+address `169.254.169.254`), multicast and unspecified addresses are always
+refused. Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
+`fc00::/7`, `100.64.0.0/10`) are refused unless the server runs with
+`FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true`, which a receiver on the same network
+(n8n, Mattermost, an internal service by its container name) needs. The check
+is made on the address a hostname resolves to when each request is sent, so a
+name that later re-resolves inside is caught too; a refused delivery is not
+retried, and the reason is shown on the channel. Webhook requests ignore
+`HTTPS_PROXY`, since through a proxy only the proxy's address could be checked.
 
 ## Single sign-on (Google Workspace)
 

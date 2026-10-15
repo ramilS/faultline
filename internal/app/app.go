@@ -35,6 +35,7 @@ type Dependencies struct {
 	GroupingRuleService        api.GroupingRuleService
 	DataScrubbingService       api.DataScrubbingService
 	GlobalDataScrubbingService api.GlobalDataScrubbingService
+	NotificationService        api.NotificationService
 	GroupService               api.GroupService
 	EnvelopeHandler            http.Handler
 	LoginLimiter               *auth.LoginLimiter
@@ -105,6 +106,7 @@ func routeTable(dependencies Dependencies, authHandler *api.AuthHandler) []route
 	routes = append(routes, groupingRuleRoutes(dependencies)...)
 	routes = append(routes, dataScrubbingRoutes(dependencies)...)
 	routes = append(routes, globalDataScrubbingRoutes(dependencies)...)
+	routes = append(routes, notificationRoutes(dependencies)...)
 	routes = append(routes, issueRoutes(dependencies)...)
 	routes = append(routes, groupRoutes(dependencies)...)
 	routes = append(routes, sentryCLIRoutes(dependencies)...)

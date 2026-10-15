@@ -304,6 +304,8 @@ func clearEnvironment(t *testing.T) {
 		"FAULTLINE_SPILL_SEGMENT_MAX_AGE",
 		"FAULTLINE_SPILL_FSYNC_INTERVAL",
 		"FAULTLINE_SPILL_MAX_BYTES",
+		"FAULTLINE_PUBLIC_URL",
+		"FAULTLINE_WEBHOOK_ALLOW_PRIVATE",
 		"FAULTLINE_OIDC_CLIENT_ID",
 		"FAULTLINE_OIDC_CLIENT_SECRET",
 		"FAULTLINE_OIDC_ISSUER",
@@ -338,6 +340,66 @@ func TestLoadArtifactQuotaFromEnv(t *testing.T) {
 			}
 			if err == nil && got.Database.ArtifactQuotaBytes != testCase.want {
 				t.Fatalf("ArtifactQuotaBytes = %d, want %d", got.Database.ArtifactQuotaBytes, testCase.want)
+			}
+		})
+	}
+}
+
+func TestLoadPublicURL(t *testing.T) {
+	cases := map[string]struct {
+		value   string
+		want    string
+		wantErr bool
+	}{
+		"unset means no links":         {"", "", false},
+		"https is kept":                {"https://faultline.example", "https://faultline.example", false},
+		"trailing slashes are trimmed": {"https://faultline.example/errors//", "https://faultline.example/errors", false},
+		"http is allowed":              {"http://faultline.internal:8080", "http://faultline.internal:8080", false},
+		"a bare host is rejected":      {"faultline.example", "", true},
+		"another scheme is rejected":   {"ftp://faultline.example", "", true},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			clearEnvironment(t)
+			t.Setenv("DATABASE_URL", "postgres://db/faultline")
+			t.Setenv("FAULTLINE_PUBLIC_URL", testCase.value)
+
+			got, err := Load()
+
+			if (err != nil) != testCase.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, testCase.wantErr)
+			}
+			if err == nil && got.PublicURL != testCase.want {
+				t.Fatalf("PublicURL = %q, want %q", got.PublicURL, testCase.want)
+			}
+		})
+	}
+}
+
+func TestLoadWebhookAllowPrivate(t *testing.T) {
+	cases := map[string]struct {
+		value   string
+		want    bool
+		wantErr bool
+	}{
+		"off by default":      {"", false, false},
+		"explicitly on":       {"true", true, false},
+		"explicitly off":      {"false", false, false},
+		"garbage is rejected": {"sometimes", false, true},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			clearEnvironment(t)
+			t.Setenv("DATABASE_URL", "postgres://db/faultline")
+			t.Setenv("FAULTLINE_WEBHOOK_ALLOW_PRIVATE", testCase.value)
+
+			got, err := Load()
+
+			if (err != nil) != testCase.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, testCase.wantErr)
+			}
+			if err == nil && got.WebhookAllowPrivate != testCase.want {
+				t.Fatalf("WebhookAllowPrivate = %v, want %v", got.WebhookAllowPrivate, testCase.want)
 			}
 		})
 	}

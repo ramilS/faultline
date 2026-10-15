@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { globalNavItems } from "./navItems.ts";
+import { globalNavItems, projectNavItems } from "./navItems.ts";
 
 test("the account entry appears for both roles; the users entry is owner-only", () => {
   assert.deepEqual(
@@ -36,5 +36,18 @@ test("the instance-wide data scrubbing entry is owner-only", () => {
   assert.equal(
     globalNavItems("owner").some((item) => item.to === "/settings/data-scrubbing"),
     true
+  );
+});
+
+// Notification channels are owner-only on the server, listing included: a
+// webhook URL can itself be a credential.
+test("the project notifications entry is owner-only and sits before General", () => {
+  assert.equal(
+    projectNavItems("shop", "member").some((item) => item.to === "/shop/settings/notifications"),
+    false
+  );
+  assert.deepEqual(
+    projectNavItems("shop", "owner").slice(-2).map((item) => item.to),
+    ["/shop/settings/notifications", "/shop/settings/general"]
   );
 });

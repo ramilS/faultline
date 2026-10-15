@@ -1,4 +1,5 @@
 import {
+  BellRing,
   Bug,
   FileKey,
   KeyRound,
@@ -44,15 +45,20 @@ export function globalNavItems(role: UserRole): readonly NavItem[] {
 
 /**
  * Navigation scoped to a project. Shared by the desktop sidebar and the
- * mobile menu so the two cannot drift apart.
+ * mobile menu so the two cannot drift apart. Notifications is owner-only on
+ * the server, reads included, so a member gets no link to it.
  */
-export function projectNavItems(slug: string): readonly NavItem[] {
-  return [
+export function projectNavItems(slug: string, role: UserRole): readonly NavItem[] {
+  const items: NavItem[] = [
     { to: `/${slug}/issues`, label: "Issues", icon: Bug },
     { to: `/${slug}/settings/keys`, label: "Ingest keys", icon: KeyRound },
     { to: `/${slug}/settings/artifact-tokens`, label: "Artifact tokens", icon: FileKey },
     { to: `/${slug}/settings/grouping`, label: "Grouping rules", icon: ListFilter },
-    { to: `/${slug}/settings/data-scrubbing`, label: "Data scrubbing", icon: ShieldCheck },
-    { to: `/${slug}/settings/general`, label: "General", icon: Settings2 }
+    { to: `/${slug}/settings/data-scrubbing`, label: "Data scrubbing", icon: ShieldCheck }
   ];
+  if (role === "owner") {
+    items.push({ to: `/${slug}/settings/notifications`, label: "Notifications", icon: BellRing });
+  }
+  items.push({ to: `/${slug}/settings/general`, label: "General", icon: Settings2 });
+  return items;
 }

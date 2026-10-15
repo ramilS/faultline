@@ -352,6 +352,7 @@ func testDependencies(t *testing.T) Dependencies {
 	dependencies.GroupingRuleService = &appGroupingRuleServiceStub{}
 	dependencies.DataScrubbingService = &appDataScrubbingServiceStub{}
 	dependencies.GlobalDataScrubbingService = &appGlobalDataScrubbingServiceStub{}
+	dependencies.NotificationService = &appNotificationServiceStub{}
 	dependencies.GroupService = &appGroupServiceStub{}
 	dependencies.UploadChunks = stubChunkStore{}
 	dependencies.Releases = stubReleaseStore{}
