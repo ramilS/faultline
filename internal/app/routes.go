@@ -129,6 +129,7 @@ func projectRoutes(dependencies Dependencies) []route {
 	return []route{
 		{pattern: "GET /api/v1/projects", gate: gateMember, handler: http.HandlerFunc(projectHandler.ListProjects)},
 		{pattern: "POST /api/v1/projects", gate: gateOwner, handler: http.HandlerFunc(projectHandler.CreateProject)},
+		{pattern: "PATCH /api/v1/projects/{slug}", gate: gateOwner, handler: http.HandlerFunc(projectHandler.UpdateProject)},
 		{pattern: "GET /api/v1/projects/{slug}/keys", gate: gateMember, handler: http.HandlerFunc(projectHandler.ListKeys)},
 		{pattern: "POST /api/v1/projects/{slug}/keys", gate: gateOwner, handler: http.HandlerFunc(projectHandler.CreateKey)},
 		{pattern: "POST /api/v1/projects/{slug}/keys/{id}/revoke", gate: gateOwner, handler: http.HandlerFunc(projectHandler.RevokeKey)},

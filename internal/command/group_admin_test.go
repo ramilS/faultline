@@ -500,6 +500,10 @@ func (r *fakeProjectRepository) List(context.Context, access.Scope) ([]project.P
 	return nil, errors.New("unexpected List call")
 }
 
+func (r *fakeProjectRepository) Update(context.Context, string, project.UpdateProject) (project.Project, error) {
+	return project.Project{}, errors.New("unexpected Update call")
+}
+
 func (r *fakeProjectRepository) FindBySlug(_ context.Context, _ access.Scope, slug string) (project.Project, error) {
 	if r.findErr != nil {
 		return project.Project{}, r.findErr

@@ -27,11 +27,19 @@ func ValidateCreateProject(input CreateProject) error {
 	if !validSlug(input.Slug) {
 		return fmt.Errorf("invalid project slug")
 	}
-	name := strings.TrimSpace(input.Name)
+	return validateNameAndPlatform(input.Name, input.Platform)
+}
+
+func ValidateUpdateProject(input UpdateProject) error {
+	return validateNameAndPlatform(input.Name, input.Platform)
+}
+
+func validateNameAndPlatform(name, platform string) error {
+	name = strings.TrimSpace(name)
 	if name == "" || len(name) > maxProjectNameLength {
 		return fmt.Errorf("invalid project name")
 	}
-	switch input.Platform {
+	switch platform {
 	case PlatformJavaScript, PlatformJVMSpring, PlatformJVMKtor, PlatformKotlinMultiplatform, PlatformScala,
 		PlatformNestJS, PlatformPython, PlatformPythonDjango, PlatformPythonFastAPI, PlatformPythonFlask, PlatformGo,
 		PlatformRuby, PlatformRubyRails, PlatformPHP, PlatformPHPLaravel, PlatformPHPSymfony, PlatformRust,
@@ -74,6 +82,20 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProject) (Proje
 		return Project{}, fmt.Errorf("create project: %w", err)
 	}
 	return project, nil
+}
+
+// UpdateProject replaces the editable fields of the project at slug,
+// preserving ErrNotFound for a slug that does not exist.
+func (s *Service) UpdateProject(ctx context.Context, slug string, input UpdateProject) (Project, error) {
+	input.Name = strings.TrimSpace(input.Name)
+	if err := ValidateUpdateProject(input); err != nil {
+		return Project{}, err
+	}
+	updated, err := s.projects.Update(ctx, slug, input)
+	if err != nil {
+		return Project{}, fmt.Errorf("update project: %w", err)
+	}
+	return updated, nil
 }
 
 func (s *Service) ListProjects(ctx context.Context, scope access.Scope) ([]Project, error) {

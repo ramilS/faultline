@@ -62,6 +62,31 @@ func TestProjectRepository(t *testing.T) {
 		assertProjectUTC(t, "listed project", listed[0].CreatedAt)
 	})
 
+	t.Run("updates name and platform but keeps slug and creation time", func(t *testing.T) {
+		created, err := projects.Create(ctx, project.CreateProject{Slug: "renamed", Name: "Old", Platform: project.PlatformOther})
+		if err != nil {
+			t.Fatalf("create project: %v", err)
+		}
+		updated, err := projects.Update(ctx, "renamed", project.UpdateProject{Name: "New", Platform: project.PlatformGo})
+		if err != nil {
+			t.Fatalf("update project: %v", err)
+		}
+		want := project.Project{ID: created.ID, Slug: "renamed", Name: "New", Platform: project.PlatformGo, CreatedAt: created.CreatedAt}
+		if updated != want {
+			t.Fatalf("updated project = %+v, want %+v", updated, want)
+		}
+		found, err := projects.FindBySlug(ctx, access.Unrestricted(), "renamed")
+		if err != nil {
+			t.Fatalf("find updated project: %v", err)
+		}
+		if found != want {
+			t.Fatalf("stored project = %+v, want %+v", found, want)
+		}
+		if _, err := projects.Update(ctx, "does-not-exist", project.UpdateProject{Name: "X", Platform: project.PlatformGo}); !errors.Is(err, project.ErrNotFound) {
+			t.Fatalf("missing slug update error = %v, want ErrNotFound", err)
+		}
+	})
+
 	t.Run("finds project by slug and reports missing slug", func(t *testing.T) {
 		created, err := projects.Create(ctx, project.CreateProject{Slug: "mobile", Name: "Mobile", Platform: project.PlatformOther})
 		if err != nil {

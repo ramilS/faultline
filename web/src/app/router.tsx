@@ -18,6 +18,7 @@ import { DataScrubbingPage } from "@/features/settings/DataScrubbingPage";
 import { GlobalDataScrubbingPage } from "@/features/settings/GlobalDataScrubbingPage";
 import { GroupingRulesPage } from "@/features/settings/GroupingRulesPage";
 import { KeysPage } from "@/features/settings/KeysPage";
+import { ProjectGeneralPage } from "@/features/settings/ProjectGeneralPage";
 import { UsersPage } from "@/features/users/UsersPage";
 
 /**
@@ -78,6 +79,7 @@ export function AppRouter() {
           <Route path="/:slug/issues" element={<IssueStreamPage />} />
           <Route path="/:slug/issues/:issueId" element={<IssueDetailPage />} />
           <Route path="/:slug/issues/:issueId/events" element={<IssueEventsPage />} />
+          <Route path="/:slug/settings/general" element={<ProjectGeneralPage />} />
           <Route path="/:slug/settings/keys" element={<KeysPage />} />
           <Route path="/:slug/settings/artifact-tokens" element={<ArtifactTokensPage />} />
           <Route path="/:slug/settings/grouping" element={<GroupingRulesPage />} />

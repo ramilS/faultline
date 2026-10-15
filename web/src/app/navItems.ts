@@ -1,4 +1,16 @@
-import { Bug, FileKey, KeyRound, LayoutGrid, ListFilter, ShieldCheck, UserCircle, Users, UsersRound, type LucideIcon } from "lucide-react";
+import {
+  Bug,
+  FileKey,
+  KeyRound,
+  LayoutGrid,
+  ListFilter,
+  Settings2,
+  ShieldCheck,
+  UserCircle,
+  Users,
+  UsersRound,
+  type LucideIcon
+} from "lucide-react";
 
 import type { UserRole } from "@/api";
 
@@ -39,6 +51,7 @@ export function projectNavItems(slug: string): readonly NavItem[] {
     { to: `/${slug}/settings/keys`, label: "Ingest keys", icon: KeyRound },
     { to: `/${slug}/settings/artifact-tokens`, label: "Artifact tokens", icon: FileKey },
     { to: `/${slug}/settings/grouping`, label: "Grouping rules", icon: ListFilter },
-    { to: `/${slug}/settings/data-scrubbing`, label: "Data scrubbing", icon: ShieldCheck }
+    { to: `/${slug}/settings/data-scrubbing`, label: "Data scrubbing", icon: ShieldCheck },
+    { to: `/${slug}/settings/general`, label: "General", icon: Settings2 }
   ];
 }

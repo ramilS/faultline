@@ -11,6 +11,7 @@ type ProjectRepository interface {
 	Create(context.Context, CreateProject) (Project, error)
 	List(context.Context, access.Scope) ([]Project, error)
 	FindBySlug(context.Context, access.Scope, string) (Project, error)
+	Update(context.Context, string, UpdateProject) (Project, error)
 }
 
 // KeyRepository persists public ingest-key credentials and their settings.

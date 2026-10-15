@@ -65,6 +65,14 @@ type CreateProject struct {
 	Platform string
 }
 
+// UpdateProject is the repository input for editing a project. The slug is
+// absent on purpose: it is the project's address in dashboard URLs and in the
+// sentry-cli upload paths, so it is fixed at creation.
+type UpdateProject struct {
+	Name     string
+	Platform string
+}
+
 // CreateKey is the repository input for a new ingest key.
 type CreateKey struct {
 	ProjectID      int64

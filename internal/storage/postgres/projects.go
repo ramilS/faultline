@@ -112,6 +112,27 @@ func (repository *projectRepository) FindBySlug(ctx context.Context, scope acces
 	return found, nil
 }
 
+func (repository *projectRepository) Update(ctx context.Context, slug string, input project.UpdateProject) (project.Project, error) {
+	var updated project.Project
+	err := repository.pool.QueryRow(ctx, `
+		UPDATE projects
+		SET name = $2, platform = $3
+		WHERE slug = $1
+		RETURNING id, slug, name, platform, created_at
+	`, slug, input.Name, input.Platform).Scan(
+		&updated.ID,
+		&updated.Slug,
+		&updated.Name,
+		&updated.Platform,
+		&updated.CreatedAt,
+	)
+	if err != nil {
+		return project.Project{}, translateProjectError("update project", err)
+	}
+	updated.CreatedAt = updated.CreatedAt.UTC()
+	return updated, nil
+}
+
 func (repository *keyRepository) Create(ctx context.Context, input project.CreateKey) (project.Key, error) {
 	var created project.Key
 	err := repository.pool.QueryRow(ctx, `

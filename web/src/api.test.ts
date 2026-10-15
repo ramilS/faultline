@@ -68,6 +68,21 @@ test("createProject sends each new platform as its literal wire value", async ()
   }
 });
 
+test("updateProject patches only name and platform at the escaped slug", async () => {
+  const { fetch, calls } = recordingFetch(
+    jsonResponse(200, { project: { id: 2, slug: "api", name: "Billing API", platform: "go", created_at: "2026-07-13T08:00:00Z" } }),
+  );
+  const api = createApi(fetch);
+
+  const updated = await api.updateProject("a/b", { name: "Billing API", platform: "go" });
+
+  assert.equal(calls[0].url, "/api/v1/projects/a%2Fb");
+  assert.equal(calls[0].init.method, "PATCH");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { name: "Billing API", platform: "go" });
+  assert.equal(updated.name, "Billing API");
+  assert.equal(updated.platform, "go");
+});
+
 test("createKey returns raw key material only at the top level", async () => {
   const { fetch, calls } = recordingFetch(
     jsonResponse(201, {

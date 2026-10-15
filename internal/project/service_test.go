@@ -15,11 +15,14 @@ import (
 )
 
 type fakeProjects struct {
-	created   []CreateProject
-	project   Project
-	createErr error
-	listErr   error
-	findErr   error
+	created     []CreateProject
+	updated     []UpdateProject
+	updatedSlug string
+	project     Project
+	createErr   error
+	listErr     error
+	findErr     error
+	updateErr   error
 }
 
 func (r *fakeProjects) Create(_ context.Context, input CreateProject) (Project, error) {
@@ -43,6 +46,15 @@ func (r *fakeProjects) FindBySlug(_ context.Context, _ access.Scope, slug string
 		return r.project, nil
 	}
 	return Project{ID: 1, Slug: slug}, nil
+}
+
+func (r *fakeProjects) Update(_ context.Context, slug string, input UpdateProject) (Project, error) {
+	r.updated = append(r.updated, input)
+	r.updatedSlug = slug
+	if r.updateErr != nil {
+		return Project{}, r.updateErr
+	}
+	return Project{ID: 1, Slug: slug, Name: input.Name, Platform: input.Platform}, nil
 }
 
 type fakeKeys struct {
@@ -180,6 +192,72 @@ func TestCreateProjectValidatesAndDelegates(t *testing.T) {
 	}
 	if _, err := service.CreateProject(t.Context(), CreateProject{Slug: "bad slug", Name: "Billing", Platform: PlatformJavaScript}); err == nil {
 		t.Fatal("invalid project reached repository")
+	}
+}
+
+func TestValidateUpdateProjectRejectsInvalidFields(t *testing.T) {
+	cases := []struct {
+		name  string
+		input UpdateProject
+	}{
+		{"empty name", UpdateProject{Name: " \t", Platform: PlatformGo}},
+		{"overlong name", UpdateProject{Name: strings.Repeat("a", maxProjectNameLength+1), Platform: PlatformGo}},
+		{"unknown platform", UpdateProject{Name: "Billing", Platform: "cobol"}},
+		{"empty platform", UpdateProject{Name: "Billing", Platform: ""}},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			if err := ValidateUpdateProject(tc.input); err == nil {
+				t.Fatal("ValidateUpdateProject() error = nil")
+			}
+		})
+	}
+}
+
+func TestValidateUpdateProjectAcceptsEveryPlatform(t *testing.T) {
+	for _, platform := range declaredPlatforms(t) {
+		t.Run(platform, func(t *testing.T) {
+			if err := ValidateUpdateProject(UpdateProject{Name: "Billing API", Platform: platform}); err != nil {
+				t.Fatalf("ValidateUpdateProject(%q) error = %v", platform, err)
+			}
+		})
+	}
+}
+
+func TestUpdateProjectTrimsNameAndDelegatesBySlug(t *testing.T) {
+	repo := &fakeProjects{}
+	service := NewService(repo, &fakeKeys{})
+
+	updated, err := service.UpdateProject(t.Context(), "billing-api", UpdateProject{Name: "  Billing  ", Platform: PlatformGo})
+
+	if err != nil {
+		t.Fatalf("UpdateProject() error = %v", err)
+	}
+	if repo.updatedSlug != "billing-api" || len(repo.updated) != 1 || repo.updated[0] != (UpdateProject{Name: "Billing", Platform: PlatformGo}) {
+		t.Fatalf("repository slug = %q, input = %+v", repo.updatedSlug, repo.updated)
+	}
+	if updated.Name != "Billing" || updated.Platform != PlatformGo {
+		t.Fatalf("updated project = %+v", updated)
+	}
+}
+
+func TestUpdateProjectDoesNotReachRepositoryWithInvalidInput(t *testing.T) {
+	repo := &fakeProjects{}
+	service := NewService(repo, &fakeKeys{})
+
+	if _, err := service.UpdateProject(t.Context(), "billing", UpdateProject{Name: "   ", Platform: PlatformGo}); err == nil {
+		t.Fatal("UpdateProject() error = nil for a blank name")
+	}
+	if len(repo.updated) != 0 {
+		t.Fatalf("invalid input reached repository: %+v", repo.updated)
+	}
+}
+
+func TestUpdateProjectPreservesNotFound(t *testing.T) {
+	service := NewService(&fakeProjects{updateErr: ErrNotFound}, &fakeKeys{})
+	_, err := service.UpdateProject(t.Context(), "gone", UpdateProject{Name: "Billing", Platform: PlatformOther})
+	if !errors.Is(err, ErrNotFound) {
+		t.Fatalf("UpdateProject() error = %v, want ErrNotFound", err)
 	}
 }
 

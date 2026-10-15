@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -33,6 +34,19 @@ type projectServiceStub struct {
 	revokedSlug  string
 	revokedKeyID int64
 	revokeCalls  int
+	updated      project.Project
+	updateErr    error
+	updateSlug   string
+	updateInputs []project.UpdateProject
+}
+
+func (s *projectServiceStub) UpdateProject(_ context.Context, slug string, input project.UpdateProject) (project.Project, error) {
+	s.updateSlug = slug
+	s.updateInputs = append(s.updateInputs, input)
+	if s.updateErr != nil {
+		return project.Project{}, s.updateErr
+	}
+	return s.updated, nil
 }
 
 func (s *projectServiceStub) ListProjects(context.Context, access.Scope) ([]project.Project, error) {
@@ -211,6 +225,73 @@ func TestCreateProjectMapsConflict(t *testing.T) {
 
 	if recorder.Code != http.StatusConflict {
 		t.Fatalf("status = %d, want 409: %s", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestUpdateProjectValidatesRequest(t *testing.T) {
+	for _, test := range []struct {
+		name        string
+		contentType string
+		body        string
+	}{
+		{"wrong content type", "text/plain", `{"name":"Web","platform":"javascript"}`},
+		{"malformed json", "application/json", `{`},
+		{"slug is not editable", "application/json", `{"slug":"other","name":"Web","platform":"javascript"}`},
+		{"unknown platform", "application/json", `{"name":"Web","platform":"cobol"}`},
+		{"missing platform", "application/json", `{"name":"Web"}`},
+		{"empty name", "application/json", `{"name":"   ","platform":"javascript"}`},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			service := &projectServiceStub{}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/web", strings.NewReader(test.body))
+			request.Header.Set("Content-Type", test.contentType)
+			request.SetPathValue("slug", "web")
+
+			newProjectHandler(service).UpdateProject(recorder, request)
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400: %s", recorder.Code, recorder.Body.String())
+			}
+			if len(service.updateInputs) != 0 {
+				t.Fatalf("service reached with invalid input: %+v", service.updateInputs)
+			}
+		})
+	}
+}
+
+func TestUpdateProjectReturnsTheStoredProject(t *testing.T) {
+	service := &projectServiceStub{updated: project.Project{ID: 7, Slug: "web", Name: "Storefront", Platform: project.PlatformNestJS, CreatedAt: time.Date(2026, 7, 13, 8, 0, 0, 0, time.UTC)}}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/web", strings.NewReader(`{"name":"Storefront","platform":"nestjs"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.SetPathValue("slug", "web")
+
+	newProjectHandler(service).UpdateProject(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+	}
+	if service.updateSlug != "web" || service.updateInputs[0] != (project.UpdateProject{Name: "Storefront", Platform: "nestjs"}) {
+		t.Fatalf("service slug = %q, input = %+v", service.updateSlug, service.updateInputs)
+	}
+	updated := decodeBody(t, recorder)["project"].(map[string]any)
+	if updated["slug"] != "web" || updated["name"] != "Storefront" || updated["platform"] != "nestjs" {
+		t.Fatalf("updated project = %v", updated)
+	}
+}
+
+func TestUpdateProjectMapsMissingProject(t *testing.T) {
+	service := &projectServiceStub{updateErr: fmt.Errorf("update project: %w", project.ErrNotFound)}
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/gone", strings.NewReader(`{"name":"Web","platform":"javascript"}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.SetPathValue("slug", "gone")
+
+	newProjectHandler(service).UpdateProject(recorder, request)
+
+	if recorder.Code != http.StatusNotFound {
+		t.Fatalf("status = %d, want 404: %s", recorder.Code, recorder.Body.String())
 	}
 }
 
@@ -422,6 +503,7 @@ func newProjectsRoutesApp(t *testing.T, user auth.User, service ProjectService) 
 	mux := http.NewServeMux()
 	mux.Handle("GET /api/v1/projects", authHandler.RequireSession(http.HandlerFunc(projectHandler.ListProjects)))
 	mux.Handle("POST /api/v1/projects", owner(projectHandler.CreateProject))
+	mux.Handle("PATCH /api/v1/projects/{slug}", owner(projectHandler.UpdateProject))
 	mux.Handle("GET /api/v1/projects/{slug}/keys", authHandler.RequireSession(http.HandlerFunc(projectHandler.ListKeys)))
 	mux.Handle("POST /api/v1/projects/{slug}/keys", owner(projectHandler.CreateKey))
 	mux.Handle("POST /api/v1/projects/{slug}/keys/{id}/revoke", owner(projectHandler.RevokeKey))
@@ -448,6 +530,20 @@ func TestCreateProjectRejectsUnauthenticated(t *testing.T) {
 
 	if response.Code != http.StatusUnauthorized {
 		t.Fatalf("status = %d, want 401: %s", response.Code, response.Body.String())
+	}
+}
+
+func TestUpdateProjectRejectsAMember(t *testing.T) {
+	service := &projectServiceStub{}
+	handler := newProjectsRoutesApp(t, auth.User{ID: 2, Role: auth.RoleMember}, service)
+
+	response := do(t, handler, jsonRequest(t, http.MethodPatch, "/api/v1/projects/web", `{"name":"Web","platform":"javascript"}`))
+
+	if response.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", response.Code, response.Body.String())
+	}
+	if len(service.updateInputs) != 0 {
+		t.Fatalf("member update reached the service: %+v", service.updateInputs)
 	}
 }
 

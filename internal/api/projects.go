@@ -21,6 +21,7 @@ type ProjectService interface {
 	ListProjects(context.Context, access.Scope) ([]project.Project, error)
 	CreateProject(context.Context, project.CreateProject) (project.Project, error)
 	FindProject(context.Context, access.Scope, string) (project.Project, error)
+	UpdateProject(context.Context, string, project.UpdateProject) (project.Project, error)
 	ListKeys(context.Context, access.Scope, string) ([]project.Key, error)
 	CreateKey(context.Context, int64, project.CreateKey) (project.Key, string, error)
 	RevokeKey(context.Context, access.Scope, string, int64) error
@@ -45,6 +46,11 @@ type createProjectRequest struct {
 	Platform string `json:"platform"`
 }
 
+type updateProjectRequest struct {
+	Name     string `json:"name"`
+	Platform string `json:"platform"`
+}
+
 type projectResponse struct {
 	ID        int64  `json:"id"`
 	Slug      string `json:"slug"`
@@ -57,7 +63,7 @@ type projectsResponse struct {
 	Projects []projectResponse `json:"projects"`
 }
 
-type createProjectResponse struct {
+type projectEnvelope struct {
 	Project projectResponse `json:"project"`
 }
 
@@ -140,7 +146,35 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusCreated, createProjectResponse{Project: toProjectResponse(created)})
+	writeJSON(w, http.StatusCreated, projectEnvelope{Project: toProjectResponse(created)})
+}
+
+func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
+	if !declaredJSONBody(r) {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	var input updateProjectRequest
+	if err := decodeSingleJSON(w, r, projectBodyLimit, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	update := project.UpdateProject{Name: input.Name, Platform: input.Platform}
+	if err := project.ValidateUpdateProject(update); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid project")
+		return
+	}
+	updated, err := h.service.UpdateProject(r.Context(), r.PathValue("slug"), update)
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err != nil {
+		h.reportError(fmt.Errorf("update project: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, projectEnvelope{Project: toProjectResponse(updated)})
 }
 
 func (h *ProjectHandler) ListKeys(w http.ResponseWriter, r *http.Request) {

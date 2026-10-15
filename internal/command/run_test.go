@@ -355,6 +355,9 @@ func (projectsForArtifactRoute) List(context.Context, access.Scope) ([]project.P
 func (projectsForArtifactRoute) FindBySlug(context.Context, access.Scope, string) (project.Project, error) {
 	return project.Project{ID: 1, Slug: "web"}, nil
 }
+func (projectsForArtifactRoute) Update(context.Context, string, project.UpdateProject) (project.Project, error) {
+	return project.Project{}, errors.New("unexpected update")
+}
 
 type artifactRouteKeys struct{}
 

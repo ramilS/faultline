@@ -18,11 +18,11 @@ import {
   DialogTitle,
   DialogTrigger
 } from "@/components/ui/dialog";
-import { Select, SelectContent, SelectGroup, SelectItem, SelectLabel, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { messageFor } from "@/errors";
 import { useSession } from "@/features/auth/SessionProvider";
 import { useProjects } from "@/features/projects/ProjectsProvider";
-import { PLATFORMS, platformGroups, platformLabel, type Platform } from "@/features/projects/platforms";
+import { PlatformSelect } from "@/features/projects/PlatformSelect";
+import { PLATFORMS, platformLabel, type Platform } from "@/features/projects/platforms";
 import { projectsEmptyState } from "@/features/projects/projectsEmptyState";
 import { PageHeader } from "@/components/PageHeader";
 import { MAX_SLUG_LENGTH, slugFromName } from "@/lib/projectSlug";
@@ -186,23 +186,7 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
 
             <div className="space-y-2">
               <Label htmlFor="project-platform">Platform</Label>
-              <Select value={platform} onValueChange={(value) => setPlatform(value as Platform)}>
-                <SelectTrigger id="project-platform" className="w-full">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {platformGroups().map((entry) => (
-                    <SelectGroup key={entry.group}>
-                      <SelectLabel>{entry.group}</SelectLabel>
-                      {entry.platforms.map((option) => (
-                        <SelectItem key={option.value} value={option.value}>
-                          {option.label}
-                        </SelectItem>
-                      ))}
-                    </SelectGroup>
-                  ))}
-                </SelectContent>
-              </Select>
+              <PlatformSelect id="project-platform" value={platform} onChange={setPlatform} />
             </div>
           </div>
 

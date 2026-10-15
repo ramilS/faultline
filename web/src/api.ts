@@ -41,6 +41,12 @@ export interface CreateProjectInput {
   platform: string;
 }
 
+/** The slug is not editable: it is the project's address in URLs and upload paths. */
+export interface UpdateProjectInput {
+  name: string;
+  platform: string;
+}
+
 export interface CreateKeyInput {
   rate_limit_rps: number;
   rate_limit_burst: number;
@@ -418,6 +424,7 @@ export interface FaultlineApi {
   me(): Promise<AuthenticatedUser>;
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
+  updateProject(slug: string, input: UpdateProjectInput): Promise<Project>;
   listKeys(slug: string): Promise<Key[]>;
   createKey(slug: string, input: CreateKeyInput): Promise<CreatedKey>;
   revokeKey(slug: string, keyId: number): Promise<void>;
@@ -486,6 +493,13 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
     },
     createProject: async (input) => {
       const body = await request<{ project: Project }>(fetchImpl, "/api/v1/projects", { method: "POST", json: input });
+      return body.project;
+    },
+    updateProject: async (slug, input) => {
+      const body = await request<{ project: Project }>(fetchImpl, `/api/v1/projects/${encodeURIComponent(slug)}`, {
+        method: "PATCH",
+        json: input
+      });
       return body.project;
     },
     listKeys: async (slug) => {
