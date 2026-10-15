@@ -54,7 +54,7 @@ Create the schema and the first account. Neither happens automatically:
 
 ```sh
 docker compose exec faultline faultline migrate up
-docker compose exec faultline faultline migrate version   # expect: 16 clean
+docker compose exec faultline faultline migrate version   # expect: 18 clean
 docker compose exec faultline faultline user create --email admin@example.com --name "Administrator"
 ```
 

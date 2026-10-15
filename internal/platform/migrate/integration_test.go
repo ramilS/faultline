@@ -8,6 +8,7 @@ import (
 	"database/sql"
 	"errors"
 	"fmt"
+	"io/fs"
 	"strings"
 	"testing"
 	"time"
@@ -27,6 +28,8 @@ func TestMigrate(t *testing.T) {
 	databaseURL := testdatabase.StartTimescale(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	defer cancel()
+	latestVersion, migrationCount := embeddedMigrations(t)
+	wantLatest := fmt.Sprintf("%d clean\n", latestVersion)
 
 	if err := migration.Run(databaseURL, migration.Up, &bytes.Buffer{}); err != nil {
 		t.Fatalf("migrate up: %v", err)
@@ -34,7 +37,7 @@ func TestMigrate(t *testing.T) {
 	if err := migration.Run(databaseURL, migration.Up, &bytes.Buffer{}); err != nil {
 		t.Fatalf("idempotent migrate up: %v", err)
 	}
-	assertVersion(t, databaseURL, "17 clean\n")
+	assertVersion(t, databaseURL, wantLatest)
 
 	pool, err := pgxpool.New(ctx, databaseURL)
 	if err != nil {
@@ -385,7 +388,7 @@ func TestMigrate(t *testing.T) {
 	})
 
 	pool.Close()
-	for range 17 {
+	for range migrationCount {
 		if err := migration.Run(databaseURL, migration.Down, &bytes.Buffer{}); err != nil {
 			t.Fatalf("migrate down: %v", err)
 		}
@@ -394,7 +397,27 @@ func TestMigrate(t *testing.T) {
 	if err := migration.Run(databaseURL, migration.Up, &bytes.Buffer{}); err != nil {
 		t.Fatalf("migrate up after rollback: %v", err)
 	}
-	assertVersion(t, databaseURL, "17 clean\n")
+	assertVersion(t, databaseURL, wantLatest)
+}
+
+// embeddedMigrations walks the embedded source with golang-migrate's own
+// parser, so the expected version tracks migrations/ instead of a literal.
+func embeddedMigrations(t *testing.T) (latest uint, count int) {
+	t.Helper()
+	source, err := iofs.New(migrations.FS, ".")
+	if err != nil {
+		t.Fatalf("open embedded migrations: %v", err)
+	}
+	defer source.Close()
+	version, err := source.First()
+	for err == nil {
+		latest, count = version, count+1
+		version, err = source.Next(version)
+	}
+	if !errors.Is(err, fs.ErrNotExist) {
+		t.Fatalf("walk embedded migrations after version %d: %v", latest, err)
+	}
+	return latest, count
 }
 
 // assertCheckViolation fails the test unless err is a CHECK constraint
