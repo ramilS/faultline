@@ -29,7 +29,8 @@ export interface IssueStreamController {
   readonly applyUpdates: (issues: readonly IssueSummary[]) => void;
 }
 
-export function useIssueStream(slug: string, filters: StreamFilters): IssueStreamController {
+/** A null slug streams every project the caller can read. */
+export function useIssueStream(slug: string | null, filters: StreamFilters): IssueStreamController {
   const [phase, setPhase] = useState<StreamPhase>({ kind: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);
   const [loadMoreError, setLoadMoreError] = useState<string | null>(null);

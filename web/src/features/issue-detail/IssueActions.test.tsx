@@ -34,6 +34,7 @@ const mockedCopyToClipboard = vi.mocked(copyToClipboard);
 function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
   return {
     id: 42,
+    project_slug: "web",
     fingerprint: "fp-1",
     title: "TimeoutError: upstream timed out",
     culprit: "billing.charge_customer",

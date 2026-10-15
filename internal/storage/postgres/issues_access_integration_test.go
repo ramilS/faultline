@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"errors"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -107,6 +108,60 @@ func TestIssueListHonoursScope(t *testing.T) {
 	})
 }
 
+// TestIssueListAcrossProjectsHonoursScope covers the slug-less list behind
+// GET /api/v1/issues, where the scope predicate is the only boundary left.
+func TestIssueListAcrossProjectsHonoursScope(t *testing.T) {
+	pool := testdatabase.Migrated(t)
+	ctx := t.Context()
+	repository := postgres.NewIssueRepository(pool)
+
+	web, _ := seedTwoProjectsWithAnIssueEach(t, pool)
+	refreshAggregate(t, ctx, pool)
+	start := time.Now().UTC().Truncate(time.Hour).Add(-time.Hour)
+	windows := []struct {
+		name   string
+		window issue.Window
+	}{
+		{name: "windowless", window: issue.Window{}},
+		{name: "absolute window", window: issue.Window{Start: start, End: start.Add(3 * time.Hour)}},
+	}
+
+	listSlugs := func(t *testing.T, scope access.Scope, window issue.Window) []string {
+		t.Helper()
+		page, err := repository.List(ctx, issue.ListFilters{Scope: scope, Window: window, Limit: 50, Sort: issue.SortLastSeen})
+		if err != nil {
+			t.Fatalf("List: %v", err)
+		}
+		slugs := make([]string, 0, len(page.Issues))
+		for _, listed := range page.Issues {
+			slugs = append(slugs, listed.ProjectSlug)
+		}
+		slices.Sort(slugs)
+		return slugs
+	}
+
+	for _, current := range windows {
+		t.Run(current.name+": a limited scope lists only its own projects", func(t *testing.T) {
+			if got := listSlugs(t, access.Limited([]int64{web}), current.window); !slices.Equal(got, []string{"web"}) {
+				t.Fatalf("project slugs = %v, want [web]", got)
+			}
+		})
+		t.Run(current.name+": an unrestricted scope lists every project", func(t *testing.T) {
+			if got := listSlugs(t, access.Unrestricted(), current.window); !slices.Equal(got, []string{"secret", "web"}) {
+				t.Fatalf("project slugs = %v, want [secret web]", got)
+			}
+		})
+	}
+
+	// A member granted nothing has no project to be "not found" in: the
+	// every-project list is an empty page, not the per-project 404.
+	t.Run("an empty scope is an empty page, not an error", func(t *testing.T) {
+		if got := listSlugs(t, access.Limited(nil), issue.Window{}); len(got) != 0 {
+			t.Fatalf("project slugs = %v, want none", got)
+		}
+	})
+}
+
 func TestIssueDetailReadsHonourScope(t *testing.T) {
 	pool := testdatabase.Migrated(t)
 	ctx := t.Context()
@@ -120,6 +175,17 @@ func TestIssueDetailReadsHonourScope(t *testing.T) {
 	t.Run("Detail", func(t *testing.T) {
 		_, err := repository.Detail(ctx, scope, foreignIssue)
 		assertNotFound(t, err)
+	})
+	// PATCH answers with Detail, and the every-project list replaces its row
+	// with that answer: a Detail without the slug would strip the row's link.
+	t.Run("Detail on an in-scope issue names its project", func(t *testing.T) {
+		detail, err := repository.Detail(ctx, scope, issueIDForProjectSlug(t, pool, "web"))
+		if err != nil {
+			t.Fatalf("Detail: %v", err)
+		}
+		if detail.Issue.ProjectSlug != "web" {
+			t.Fatalf("ProjectSlug = %q, want web", detail.Issue.ProjectSlug)
+		}
 	})
 	t.Run("Events", func(t *testing.T) {
 		_, err := repository.Events(ctx, scope, issue.EventQuery{IssueID: foreignIssue, Limit: 10})

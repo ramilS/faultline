@@ -118,6 +118,16 @@ func sortColumn(sort issue.Sort) string {
 	}
 }
 
+// projectRestriction renders the $1 clause. An empty slug lists every project
+// the scope admits; $1 is still bound (to NULL) so that every later
+// placeholder is numbered the same in both shapes.
+func projectRestriction(slug string) (string, any) {
+	if slug == "" {
+		return "$1::text IS NULL", nil
+	}
+	return "p.slug = $1", slug
+}
+
 // buildListFilterQuery renders the base issue-list SELECT plus its scope,
 // window, predicate, and free-text WHERE clauses, and the args bound to it in
 // bind order. It is split out from List so the $1-project-slug-then-window-
@@ -137,7 +147,7 @@ func sortColumn(sort issue.Sort) string {
 // position, is what needs to read naturally there).
 func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 	predicates := newPredicateBuilder()
-	cte, windowPredicate := windowClause(filters.Window, predicates)
+	cte, windowPredicate := windowClause(filters.Window, filters.ProjectSlug != "", predicates)
 
 	for _, predicate := range filters.Predicates {
 		if err := predicates.add(predicate); err != nil {
@@ -145,7 +155,8 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 		}
 	}
 
-	args := []any{filters.ProjectSlug}
+	projectClause, projectArg := projectRestriction(filters.ProjectSlug)
+	args := []any{projectArg}
 	args = append(args, predicates.args()...)
 
 	textClause := ""
@@ -161,11 +172,13 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 	builder.WriteString(cte)
 	builder.WriteString(`
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
-		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email
+		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE p.slug = $1 AND i.merged_into_id IS NULL`)
+		WHERE `)
+	builder.WriteString(projectClause)
+	builder.WriteString(` AND i.merged_into_id IS NULL`)
 	builder.WriteString(scopeClause)
 	builder.WriteString(windowPredicate)
 	builder.WriteString(predicates.sql())
@@ -213,7 +226,7 @@ func (repository *issueRepository) List(ctx context.Context, filters issue.ListF
 		)
 		if err := rows.Scan(&listed.ID, &listed.Fingerprint, &listed.Title, &listed.Culprit,
 			&listed.Level, &listed.Status, &listed.TimesSeen, &listed.UsersSeen, &listed.FirstSeen, &listed.LastSeen,
-			&assigneeID, &assigneeName, &assigneeEmail); err != nil {
+			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug); err != nil {
 			return issue.Page{}, translateIssueError("scan issue", err)
 		}
 		listed.FirstSeen = listed.FirstSeen.UTC()
@@ -226,7 +239,7 @@ func (repository *issueRepository) List(ctx context.Context, filters issue.ListF
 	if err := rows.Err(); err != nil {
 		return issue.Page{}, translateIssueError("iterate issues", err)
 	}
-	if len(issues) == 0 {
+	if len(issues) == 0 && filters.ProjectSlug != "" {
 		if err := repository.requireProjectInScope(ctx, filters.Scope, filters.ProjectSlug); err != nil {
 			return issue.Page{}, err
 		}
@@ -256,13 +269,14 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 	)
 	err := repository.pool.QueryRow(ctx, `
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
-		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id
+		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id, p.slug
 		FROM issues i
+		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE i.id = $1`+predicate, args...).Scan(&detail.Issue.ID, &detail.Issue.Fingerprint, &detail.Issue.Title,
 		&detail.Issue.Culprit, &detail.Issue.Level, &detail.Issue.Status,
 		&detail.Issue.TimesSeen, &detail.Issue.UsersSeen, &detail.Issue.FirstSeen, &detail.Issue.LastSeen,
-		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID)
+		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID, &detail.Issue.ProjectSlug)
 	if err != nil {
 		return issue.Detail{}, translateIssueError("issue detail", err)
 	}

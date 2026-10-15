@@ -297,9 +297,13 @@ export function changesUrl(current: StreamFilters, next: StreamFilters): boolean
   return searchParamsFromFilters(current).toString() !== searchParamsFromFilters(next).toString();
 }
 
-/** Identity of a project's filtered stream: the same key means the same request. */
-export function streamKey(slug: string, filters: StreamFilters): string {
-  return `${slug}?${filtersKey(filters)}`;
+/**
+ * Identity of a filtered stream: the same key means the same request. A null
+ * slug is the every-project stream; `*` cannot occur in a slug, so its key
+ * never collides with a project's.
+ */
+export function streamKey(slug: string | null, filters: StreamFilters): string {
+  return `${slug ?? "*"}?${filtersKey(filters)}`;
 }
 
 export function isDefaultFilters(filters: StreamFilters): boolean {

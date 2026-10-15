@@ -223,7 +223,7 @@ func (b *predicateBuilder) timeClause(column string, op issue.Operator, values [
 // just outside it; a `last_seen >= start` prefilter would drop that issue even
 // though the aggregate — the authority here — says it fired in the window.
 // That is a false negative the aggregate alone does not have.
-func windowClause(window issue.Window, builder *predicateBuilder) (string, string) {
+func windowClause(window issue.Window, isOneProject bool, builder *predicateBuilder) (string, string) {
 	if window.IsZero() {
 		return "", ""
 	}
@@ -239,16 +239,20 @@ func windowClause(window issue.Window, builder *predicateBuilder) (string, strin
 	// subquery costs a pushed-down semi-join and no data.
 	// windowed only needs to answer issue-id membership: attachWindowedSparklines
 	// runs the actual period_count sum in its own query, so aggregating it here
-	// too would be dead weight.
+	// too would be dead weight. Across every project the outer query's scope
+	// predicate is what restricts the result, so the CTE need not repeat it.
+	projectFilter := ""
+	if isOneProject {
+		projectFilter = "project_id = (SELECT id FROM projects WHERE slug = $1)\n\t\t          AND "
+	}
 	cte := fmt.Sprintf(`WITH windowed AS (
 		SELECT DISTINCT issue_id
 		FROM issue_counts_hourly
 		WHERE issue_id IN (
 		        SELECT id FROM issues
-		        WHERE project_id = (SELECT id FROM projects WHERE slug = $1)
-		          AND merged_into_id IS NULL)
+		        WHERE %smerged_into_id IS NULL)
 		  AND bucket >= $%d AND bucket < $%d
-	)`, startPlaceholder, endPlaceholder)
+	)`, projectFilter, startPlaceholder, endPlaceholder)
 	predicate := " AND i.id IN (SELECT issue_id FROM windowed)"
 	return cte, predicate
 }

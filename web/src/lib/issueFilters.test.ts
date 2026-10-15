@@ -273,6 +273,13 @@ test("the same filters under different projects are different streams", () => {
   assert.equal(streamKey("checkout-web", DEFAULT_FILTERS), streamKey("checkout-web", DEFAULT_FILTERS));
 });
 
+test("the every-project stream never shares a key with a project's own", () => {
+  // Slugs are [a-z0-9-], so the marker cannot collide with any real one.
+  assert.notEqual(streamKey(null, DEFAULT_FILTERS), streamKey("null", DEFAULT_FILTERS));
+  assert.notEqual(streamKey(null, DEFAULT_FILTERS), streamKey("all", DEFAULT_FILTERS));
+  assert.notEqual(streamKey(null, DEFAULT_FILTERS), streamKey("", DEFAULT_FILTERS));
+});
+
 test("only the default filter set is reported as default", () => {
   assert.equal(isDefaultFilters(DEFAULT_FILTERS), true);
   assert.equal(isDefaultFilters({ ...DEFAULT_FILTERS, query: "  " }), true);

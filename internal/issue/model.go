@@ -78,7 +78,10 @@ type Assignee struct {
 
 // Issue is a grouped error with its triage state and list sparklines.
 type Issue struct {
-	ID          int64
+	ID int64
+	// ProjectSlug names the project the issue belongs to, so a list spanning
+	// every project can link each row back to its own project.
+	ProjectSlug string
 	Fingerprint string
 	Title       string
 	Culprit     string
@@ -187,6 +190,8 @@ type Bucket struct {
 // AND'd; Window and Text are separate because the 2.9b query compiler produces
 // predicates but never owns the time range or the free-text term.
 type ListFilters struct {
+	// ProjectSlug narrows the list to one project; empty lists every project
+	// Scope admits.
 	ProjectSlug string
 	Window      Window
 	Predicates  []Predicate

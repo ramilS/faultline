@@ -60,7 +60,15 @@ func ValidateCreateKey(input CreateKey) error {
 	return nil
 }
 
+// reservedSlugs are the dashboard's own top-level path segments (and the API
+// prefix). The dashboard serves a project at /{slug}, so a project named after
+// one of these would be unreachable behind the screen that owns the path.
+var reservedSlugs = map[string]bool{"api": true, "issues": true, "login": true, "projects": true, "settings": true}
+
 func validSlug(slug string) bool {
+	if reservedSlugs[slug] {
+		return false
+	}
 	if slug == "" || len(slug) > 64 || slug[0] == '-' || slug[len(slug)-1] == '-' {
 		return false
 	}

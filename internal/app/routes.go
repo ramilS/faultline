@@ -204,6 +204,7 @@ func issueRoutes(dependencies Dependencies) []route {
 	usersFacetHandler := api.NewUsersFacetHandler(dependencies.IssueService, api.Options{ReportError: dependencies.ReportError})
 	return []route{
 		{pattern: "GET /api/v1/projects/{slug}/issues", gate: gateMember, handler: http.HandlerFunc(issueHandler.ListIssues)},
+		{pattern: "GET /api/v1/issues", gate: gateMember, handler: http.HandlerFunc(issueHandler.ListIssues)},
 		{pattern: "GET /api/v1/issues/{id}", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueDetail)},
 		{pattern: "PATCH /api/v1/issues/{id}", gate: gateMember, handler: http.HandlerFunc(issueHandler.PatchIssue)},
 		{pattern: "POST /api/v1/issues/{id}/merge", gate: gateMember, handler: http.HandlerFunc(issueHandler.MergeIssue)},

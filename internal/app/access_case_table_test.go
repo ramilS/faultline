@@ -40,6 +40,7 @@ var foreignProjectCases = []accessCase{
 	{pattern: "GET /api/v1/events/{event_id}/timeline", method: "GET", target: "/api/v1/events/{foreignEvent}/timeline"},
 	{pattern: "GET /api/v1/users/assignable", method: "GET", target: "/api/v1/users/assignable?project=secret"},
 	{pattern: "GET /api/v1/projects", method: "GET", target: "/api/v1/projects"}, // asserted by absence, see below
+	{pattern: "GET /api/v1/issues", method: "GET", target: "/api/v1/issues"},     // asserted by absence, see below
 }
 
 // A gateMember route with no case here is an unverified hole in the boundary.

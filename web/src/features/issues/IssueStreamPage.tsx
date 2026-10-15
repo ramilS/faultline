@@ -1,4 +1,5 @@
 import { Bug, SearchX } from "lucide-react";
+import { useMemo } from "react";
 import { Link, useParams } from "react-router-dom";
 
 import { NotFoundPage } from "@/app/NotFoundPage";
@@ -27,13 +28,22 @@ export function IssueStreamPage() {
   return <IssueStreamView slug={slug} />;
 }
 
-function IssueStreamView({ slug }: { slug: string }) {
-  useDocumentTitle(`Issues · ${slug}`);
+/** Every project the caller can read, in one stream. */
+export function AllIssuesPage() {
+  return <IssueStreamView slug={null} />;
+}
+
+/** `slug` null is the every-project stream; otherwise one project's. */
+function IssueStreamView({ slug }: { slug: string | null }) {
+  useDocumentTitle(slug === null ? "All issues" : `Issues · ${slug}`);
   const controls = useUrlFilters();
   const { filters } = controls;
   const { state: projects } = useProjects();
-  const projectName =
-    (projects.status === "ready" ? projects.projects.find((project) => project.slug === slug)?.name : undefined) ?? slug;
+  const projectNames = useMemo(
+    () =>
+      new Map(projects.status === "ready" ? projects.projects.map((project) => [project.slug, project.name]) : []),
+    [projects]
+  );
   const { phase, stream, loadingMore, loadMoreError, loadMore, reload, applyUpdates } = useIssueStream(
     slug,
     filters
@@ -51,7 +61,14 @@ function IssueStreamView({ slug }: { slug: string }) {
 
   return (
     <>
-      <PageHeader title="Issues" description={`Errors reported to ${projectName}, grouped by cause.`} />
+      <PageHeader
+        title={slug === null ? "All issues" : "Issues"}
+        description={
+          slug === null
+            ? "Errors reported to every project you can access, grouped by cause."
+            : `Errors reported to ${projectNames.get(slug) ?? slug}, grouped by cause.`
+        }
+      />
 
       <IssueFilterBar slug={slug} controls={controls} />
 
@@ -72,7 +89,7 @@ function IssueStreamView({ slug }: { slug: string }) {
         <>
           <IssueTable
             issues={issues}
-            slug={slug}
+            projectNames={slug === null ? projectNames : null}
             selectedIds={triage.selectedIds}
             windowLabel={windowColumnLabel(filters)}
             sort={filters.sort}
@@ -120,7 +137,7 @@ function IssueStreamView({ slug }: { slug: string }) {
 }
 
 interface StreamEmptyStateProps {
-  slug: string;
+  slug: string | null;
   filtered: boolean;
   canClearFilters: boolean;
   onClearFilters: () => void;
@@ -132,13 +149,32 @@ function StreamEmptyState({ slug, filtered, canClearFilters, onClearFilters }: S
       <EmptyState
         icon={SearchX}
         title="No issues match these filters"
-        description="Nothing in this project matches the current filters together."
+        description={
+          slug === null
+            ? "Nothing in your projects matches the current filters together."
+            : "Nothing in this project matches the current filters together."
+        }
         action={
           canClearFilters ? (
             <Button variant="outline" size="sm" onClick={onClearFilters}>
               Clear filters
             </Button>
           ) : undefined
+        }
+      />
+    );
+  }
+
+  if (slug === null) {
+    return (
+      <EmptyState
+        icon={Bug}
+        title="No issues yet"
+        description="Issues appear here as soon as any of your projects receives its first event."
+        action={
+          <Button asChild variant="outline" size="sm">
+            <Link to="/projects">View projects</Link>
+          </Button>
         }
       />
     );

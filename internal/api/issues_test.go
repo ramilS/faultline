@@ -186,6 +186,36 @@ func TestListIssuesParsesFiltersAndReturnsPage(t *testing.T) {
 	}
 }
 
+// TestListIssuesWithoutSlugListsEveryProjectInScope pins the GET
+// /api/v1/issues shape: no slug reaches the service, and each row names its
+// own project on the wire so the dashboard can link back to it.
+func TestListIssuesWithoutSlugListsEveryProjectInScope(t *testing.T) {
+	now := time.Now().UTC()
+	service := &stubIssueService{page: issue.Page{Issues: []issue.Issue{
+		{ID: 1, ProjectSlug: "web", Title: "Boom", Status: issue.StatusUnresolved, LastSeen: now, FirstSeen: now},
+	}}}
+	handler := NewIssueHandler(service, Options{})
+
+	recorder := httptest.NewRecorder()
+	handler.ListIssues(recorder, newIssueRequest(http.MethodGet, "/api/v1/issues?status=unresolved", ""))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
+	}
+	if service.lastFilters.ProjectSlug != "" {
+		t.Fatalf("filters.ProjectSlug = %q, want empty", service.lastFilters.ProjectSlug)
+	}
+	var body struct {
+		Issues []map[string]any `json:"issues"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if len(body.Issues) != 1 || body.Issues[0]["project_slug"] != "web" {
+		t.Fatalf("body = %s, want one issue with project_slug web", recorder.Body.String())
+	}
+}
+
 // TestToIssueResponseKeepsLegacyShapeWhenCountsIsEmpty pins backward
 // compatibility for a windowless request: counts_24h/counts_14d must render
 // even when every bucket is genuinely zero (an issue with no events in that

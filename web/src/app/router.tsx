@@ -10,7 +10,7 @@ import { LoginPage } from "@/features/auth/LoginPage";
 import { IssueDetailPage } from "@/features/issue-detail/IssueDetailPage";
 import { GroupsPage } from "@/features/groups/GroupsPage";
 import { IssueEventsPage } from "@/features/issue-detail/IssueEventsPage";
-import { IssueStreamPage } from "@/features/issues/IssueStreamPage";
+import { AllIssuesPage, IssueStreamPage } from "@/features/issues/IssueStreamPage";
 import { ProjectsPage } from "@/features/projects/ProjectsPage";
 import { ProjectsProvider } from "@/features/projects/ProjectsProvider";
 import { ArtifactTokensPage } from "@/features/settings/ArtifactTokensPage";
@@ -45,6 +45,7 @@ export function AppRouter() {
         >
           <Route path="/" element={<Navigate to="/projects" replace />} />
           <Route path="/projects" element={<ProjectsPage />} />
+          <Route path="/issues" element={<AllIssuesPage />} />
           <Route path="/settings" element={<Navigate to="account" replace />} />
           <Route path="/settings/account" element={<AccountPage />} />
           <Route

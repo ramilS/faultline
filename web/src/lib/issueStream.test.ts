@@ -7,6 +7,7 @@ import { appendPage, emptyStream, hasMore, replaceIssues } from "./issueStream.t
 function issue(id: number, overrides: Partial<IssueSummary> = {}): IssueSummary {
   return {
     id,
+    project_slug: "web",
     fingerprint: `fp${id}`,
     title: `Issue ${id}`,
     culprit: `module.fn${id}`,

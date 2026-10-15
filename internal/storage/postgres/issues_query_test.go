@@ -110,7 +110,7 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 
 	wantQuery := "\n" +
 		"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email\n" +
+		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
 		"\t\tFROM issues i\n" +
 		"\t\tJOIN projects p ON p.id = i.project_id\n" +
 		"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -162,7 +162,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 
 		wantQuery := "\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -215,7 +215,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t)" +
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -305,7 +305,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t)" +
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -329,6 +329,58 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 		}
 		if !reflect.DeepEqual(args, wantArgs) {
 			t.Fatalf("args = %#v, want %#v", args, wantArgs)
+		}
+	})
+}
+
+// TestBuildListFilterQueryAcrossEveryProject pins the slug-less shape behind
+// GET /api/v1/issues: $1 stays reserved (bound to NULL) so every predicate
+// keeps the placeholder numbering the per-project shape uses, while the scope
+// predicate is the only thing left restricting which projects are read.
+func TestBuildListFilterQueryAcrossEveryProject(t *testing.T) {
+	t.Run("limited scope with a predicate", func(t *testing.T) {
+		filters := issue.ListFilters{
+			Scope:      access.Limited([]int64{7, 9}),
+			Predicates: []issue.Predicate{{Field: issue.FieldStatus, Values: []string{"unresolved"}}},
+		}
+
+		query, args, err := buildListFilterQuery(filters)
+		if err != nil {
+			t.Fatalf("buildListFilterQuery: %v", err)
+		}
+
+		if !strings.HasSuffix(query, "WHERE $1::text IS NULL AND i.merged_into_id IS NULL"+
+			" AND p.id = ANY($3)"+
+			" AND (i.status::text = ANY($2))") {
+			t.Fatalf("query = %q, want the slug restriction replaced by a NULL-bound $1", query)
+		}
+		wantArgs := []any{
+			nil,                    // $1: no project slug
+			[]string{"unresolved"}, // $2: status value
+			[]int64{7, 9},          // $3: projects in scope
+		}
+		if !reflect.DeepEqual(args, wantArgs) {
+			t.Fatalf("args = %#v, want %#v", args, wantArgs)
+		}
+	})
+
+	t.Run("absolute window does not restrict the aggregate to one project", func(t *testing.T) {
+		start := time.Date(2026, 8, 3, 0, 0, 0, 0, time.UTC)
+		filters := issue.ListFilters{
+			Scope:  access.Unrestricted(),
+			Window: issue.Window{Start: start, End: start.Add(24 * time.Hour)},
+		}
+
+		query, _, err := buildListFilterQuery(filters)
+		if err != nil {
+			t.Fatalf("buildListFilterQuery: %v", err)
+		}
+
+		if strings.Contains(query, "slug = $1") {
+			t.Fatalf("query = %q, want no slug lookup in the every-project shape", query)
+		}
+		if !strings.Contains(query, "SELECT id FROM issues\n\t\t        WHERE merged_into_id IS NULL)") {
+			t.Fatalf("query = %q, want the windowed CTE to read every live issue", query)
 		}
 	})
 }

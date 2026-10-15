@@ -53,7 +53,12 @@ const ASSIGNED_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
 ];
 
 export interface IssueFilterBarProps {
-  readonly slug: string;
+  /**
+   * The project whose tag vocabulary feeds the environment, release, and tag
+   * pickers. Null across every project: tag values are per-project, so those
+   * pickers are left out rather than offering one project's values for all.
+   */
+  readonly slug: string | null;
   readonly controls: UrlFilterControls;
 }
 
@@ -165,23 +170,27 @@ export function IssueFilterBar({ slug, controls }: IssueFilterBarProps) {
             </SelectContent>
           </Select>
 
-          <FacetFilterIfPopulated
-            slug={slug}
-            tagKey="environment"
-            label="Environment"
-            selectedValues={filters.environments}
-            onChange={controls.setEnvironments}
-          />
+          {slug !== null && (
+            <>
+              <FacetFilterIfPopulated
+                slug={slug}
+                tagKey="environment"
+                label="Environment"
+                selectedValues={filters.environments}
+                onChange={controls.setEnvironments}
+              />
 
-          <FacetFilterIfPopulated
-            slug={slug}
-            tagKey="release"
-            label="Release"
-            selectedValues={filters.releases}
-            onChange={controls.setReleases}
-          />
+              <FacetFilterIfPopulated
+                slug={slug}
+                tagKey="release"
+                label="Release"
+                selectedValues={filters.releases}
+                onChange={controls.setReleases}
+              />
 
-          <TagFilterControl slug={slug} tags={filters.tags} onChange={controls.setTags} />
+              <TagFilterControl slug={slug} tags={filters.tags} onChange={controls.setTags} />
+            </>
+          )}
 
           <Select value={filters.sort} onValueChange={(value) => controls.setSort(parseIssueSort(value))}>
             <SelectTrigger size="sm" aria-label="Sort issues by" className="h-8">

@@ -9,7 +9,12 @@ import { cn } from "@/lib/utils";
 
 export interface IssueTableProps {
   issues: readonly IssueSummary[];
-  slug: string;
+  /**
+   * Project names by slug when the list spans projects, which adds a project
+   * column; null inside a single project, where the column would repeat the
+   * page title on every row.
+   */
+  projectNames: ReadonlyMap<string, string> | null;
   selectedIds: ReadonlySet<number>;
   /** The sparkline column's active window, e.g. "14d" or "Range" — see windowColumnLabel. */
   windowLabel: string;
@@ -21,7 +26,7 @@ export interface IssueTableProps {
 
 export function IssueTable({
   issues,
-  slug,
+  projectNames,
   selectedIds,
   windowLabel,
   sort,
@@ -46,6 +51,9 @@ export function IssueTable({
           </TableHead>
           <TableHead className="text-muted-foreground w-24 text-xs font-medium max-sm:hidden">Level</TableHead>
           <TableHead className="text-muted-foreground text-xs font-medium">Issue</TableHead>
+          {projectNames !== null && (
+            <TableHead className="text-muted-foreground w-36 text-xs font-medium max-md:hidden">Project</TableHead>
+          )}
           <TableHead className="text-muted-foreground w-28 text-xs font-medium max-md:hidden">{windowLabel}</TableHead>
           <SortableHead label="Events" sortValue="times_seen" activeSort={sort} onSortChange={onSortChange} />
           <SortableHead
@@ -71,7 +79,7 @@ export function IssueTable({
           <IssueRow
             key={issue.id}
             issue={issue}
-            slug={slug}
+            projectName={projectNames === null ? undefined : (projectNames.get(issue.project_slug) ?? issue.project_slug)}
             selected={selectedIds.has(issue.id)}
             onSelectedChange={(selected) => onSelectedChange(issue.id, selected)}
           />

@@ -3,7 +3,7 @@
  * adding it to this set would make the shell offer project navigation for a
  * project that does not exist.
  */
-const RESERVED = new Set(["projects", "login"]);
+const RESERVED = new Set(["issues", "projects", "login"]);
 
 /**
  * Extracts the active project slug from a pathname.

@@ -10,6 +10,7 @@ const cases: ReadonlyArray<[string, string | null, string]> = [
   ["/my-app-2/issues", "my-app-2", "slug with digits and dashes"],
   ["/projects", null, "the projects index is not a project"],
   ["/login", null, "login is not a project"],
+  ["/issues", null, "the every-project issue list is not a project"],
   ["/", null, "root"],
   ["", null, "empty path"],
   ["/faultline", "faultline", "bare project path"]

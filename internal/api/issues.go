@@ -60,6 +60,7 @@ type assigneeResponse struct {
 
 type issueResponse struct {
 	ID          int64             `json:"id"`
+	ProjectSlug string            `json:"project_slug"`
 	Fingerprint string            `json:"fingerprint"`
 	Title       string            `json:"title"`
 	Culprit     string            `json:"culprit"`
@@ -626,6 +627,7 @@ func toIssueResponse(source issue.Issue) issueResponse {
 	}
 	response := issueResponse{
 		ID:          source.ID,
+		ProjectSlug: source.ProjectSlug,
 		Fingerprint: source.Fingerprint,
 		Title:       source.Title,
 		Culprit:     source.Culprit,

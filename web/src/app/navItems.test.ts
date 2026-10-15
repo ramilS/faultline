@@ -6,11 +6,11 @@ import { globalNavItems } from "./navItems.ts";
 test("the account entry appears for both roles; the users entry is owner-only", () => {
   assert.deepEqual(
     globalNavItems("member").map((item) => item.to),
-    ["/projects", "/settings/account"]
+    ["/issues", "/projects", "/settings/account"]
   );
   assert.deepEqual(
     globalNavItems("owner").map((item) => item.to),
-    ["/projects", "/settings/account", "/settings/users", "/settings/groups", "/settings/data-scrubbing"]
+    ["/issues", "/projects", "/settings/account", "/settings/users", "/settings/groups", "/settings/data-scrubbing"]
   );
 });
 

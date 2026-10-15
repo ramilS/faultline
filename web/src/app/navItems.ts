@@ -30,6 +30,7 @@ export interface NavItem {
  */
 export function globalNavItems(role: UserRole): readonly NavItem[] {
   const items: NavItem[] = [
+    { to: "/issues", label: "All issues", icon: Bug, end: true },
     { to: "/projects", label: "Projects", icon: LayoutGrid, end: true },
     { to: "/settings/account", label: "Account", icon: UserCircle }
   ];

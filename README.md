@@ -35,7 +35,9 @@ into the binary; there is no separate service, queue, or worker to run.
   (for example a hand-edited row) makes ingest fall back to the built-in scrubbing and
   report an error for each envelope until the rule is fixed.
 - **Triage** — resolve, ignore, reopen, assign, and merge, with automatic reopen when
-  a resolved issue recurs.
+  a resolved issue recurs. *All issues* lists every project you can access in one
+  stream; environment, release, and tag pickers stay per project, because tag values
+  belong to a project.
 - **Issue detail** — occurrence charts, tag facets, event paging, request timelines,
   browser stack traces symbolicated from uploaded source maps, and Android stack
   traces retraced from uploaded ProGuard/R8 mappings.

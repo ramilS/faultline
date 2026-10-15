@@ -156,6 +156,17 @@ test("listIssues builds a same-origin GET with repeated multi-value filters and 
   assert.equal(calls[0].init.credentials, "same-origin");
 });
 
+test("listIssues without a project reads the every-project list", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(200, { issues: [], next_cursor: null }));
+  const api = createApi(fetch);
+
+  await api.listIssues(null, { statuses: ["unresolved"] });
+
+  const url = new URL(calls[0].url, "http://x.test");
+  assert.equal(url.pathname, "/api/v1/issues");
+  assert.deepEqual(url.searchParams.getAll("status"), ["unresolved"]);
+});
+
 test("listIssues forwards assigned and the time window", async () => {
   const { fetch, calls } = recordingFetch(jsonResponse(200, { issues: [], next_cursor: null }));
   const api = createApi(fetch);

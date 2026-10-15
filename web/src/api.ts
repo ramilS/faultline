@@ -77,6 +77,7 @@ export interface Assignee {
 
 export interface IssueSummary {
   id: number;
+  project_slug: string;
   fingerprint: string;
   title: string;
   culprit: string;
@@ -431,7 +432,8 @@ export interface FaultlineApi {
   listArtifactTokens(slug: string): Promise<ArtifactToken[]>;
   createArtifactToken(slug: string, name: string): Promise<CreatedArtifactToken>;
   revokeArtifactToken(slug: string, tokenId: number): Promise<void>;
-  listIssues(slug: string, filters?: IssueFilters): Promise<IssuePage>;
+  /** A null slug lists every project the caller can read. */
+  listIssues(slug: string | null, filters?: IssueFilters): Promise<IssuePage>;
   listTagKeys(slug: string): Promise<TagKeyFacet[]>;
   listTagValues(slug: string, key: string, query?: string, signal?: AbortSignal): Promise<TagValue[]>;
   getIssue(id: number): Promise<IssueDetailResult>;
@@ -541,7 +543,8 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
       if (filters.limit) query.set("limit", String(filters.limit));
       if (filters.cursor) query.set("cursor", filters.cursor);
       const suffix = query.toString() ? `?${query.toString()}` : "";
-      return request<IssuePage>(fetchImpl, `/api/v1/projects/${encodeURIComponent(slug)}/issues${suffix}`, { method: "GET" });
+      const path = slug === null ? "/api/v1/issues" : `/api/v1/projects/${encodeURIComponent(slug)}/issues`;
+      return request<IssuePage>(fetchImpl, `${path}${suffix}`, { method: "GET" });
     },
     listTagKeys: async (slug) => {
       const body = await request<{ tags: TagKeyFacet[] }>(fetchImpl, tagsPath(slug), { method: "GET" });

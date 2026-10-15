@@ -40,8 +40,11 @@ func TestForeignProjectIsNotFound(t *testing.T) {
 	server, fixture := startServerForMemberOfWebOnly(t)
 
 	for _, testCase := range foreignProjectCases {
-		if testCase.pattern == "GET /api/v1/projects" {
+		switch testCase.pattern {
+		case "GET /api/v1/projects":
 			continue // covered by TestProjectListOmitsForeignProjects
+		case "GET /api/v1/issues":
+			continue // covered by TestIssueListOmitsForeignIssues
 		}
 		t.Run(testCase.pattern, func(t *testing.T) {
 			response := fixture.do(t, server, testCase)
@@ -81,11 +84,36 @@ func TestProjectListOmitsForeignProjects(t *testing.T) {
 	}
 }
 
+// The every-project issue list has no slug to answer 404 for either, so it
+// too is asserted by absence: the member's own issue is listed, the foreign
+// project's two are not.
+func TestIssueListOmitsForeignIssues(t *testing.T) {
+	server, fixture := startServerForMemberOfWebOnly(t)
+
+	body := fixture.getJSON(t, server, "/api/v1/issues")
+	var decoded struct {
+		Issues []struct {
+			ID          int64  `json:"id"`
+			ProjectSlug string `json:"project_slug"`
+		} `json:"issues"`
+	}
+	if err := json.Unmarshal([]byte(body), &decoded); err != nil {
+		t.Fatalf("decode issue list: %v (body %s)", err, body)
+	}
+	if len(decoded.Issues) != 1 {
+		t.Fatalf("issues = %d, want only the member's own (body %s)", len(decoded.Issues), body)
+	}
+	if listed := decoded.Issues[0]; listed.ID != fixture.localIssue || listed.ProjectSlug != "web" {
+		t.Errorf("issue = %+v, want id %d in project web", listed, fixture.localIssue)
+	}
+}
+
 // memberFixture carries what a request needs to arrive as the seeded member:
 // the session cookie the login route issued, and the ids of the rows the case
 // table refers to by placeholder.
 type memberFixture struct {
 	cookie             *http.Cookie
+	localIssue         int64
 	foreignIssue       int64
 	secondForeignIssue int64
 	foreignEvent       uuid.UUID
@@ -185,6 +213,7 @@ func startServerForMemberOfWebOnly(t *testing.T) (*httptest.Server, *memberFixtu
 
 	localProject := seedProject(t, pool, "web", "Web", "javascript")
 	foreignProject := seedProject(t, pool, "secret", "Secret", "other")
+	localIssue, _ := seedIssueWithEvent(t, pool, localProject, "local")
 	foreignIssue, foreignEvent := seedIssueWithEvent(t, pool, foreignProject, "foreign")
 	secondForeignIssue, _ := seedIssueWithEvent(t, pool, foreignProject, "foreign-second")
 
@@ -220,6 +249,7 @@ func startServerForMemberOfWebOnly(t *testing.T) (*httptest.Server, *memberFixtu
 
 	return server, &memberFixture{
 		cookie:             signIn(t, server, "member@example.com", memberPassword),
+		localIssue:         localIssue,
 		foreignIssue:       foreignIssue,
 		secondForeignIssue: secondForeignIssue,
 		foreignEvent:       foreignEvent,

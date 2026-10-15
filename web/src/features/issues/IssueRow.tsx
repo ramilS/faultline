@@ -12,14 +12,15 @@ import { eventCount, eventCountTitle, sparklineCounts, sparklineWindow } from "@
 
 export interface IssueRowProps {
   issue: IssueSummary;
-  slug: string;
+  /** Set only when the list spans projects; renders the project column. */
+  projectName?: string;
   selected: boolean;
   onSelectedChange: (selected: boolean) => void;
 }
 
-export function IssueRow({ issue, slug, selected, onSelectedChange }: IssueRowProps) {
+export function IssueRow({ issue, projectName, selected, onSelectedChange }: IssueRowProps) {
   const navigate = useNavigate();
-  const to = `/${slug}/issues/${issue.id}`;
+  const to = `/${issue.project_slug}/issues/${issue.id}`;
 
   const openIssue = (event: MouseEvent<HTMLTableRowElement>) => {
     // The title link and the checkbox handle their own clicks; a row-level
@@ -68,7 +69,18 @@ export function IssueRow({ issue, slug, selected, onSelectedChange }: IssueRowPr
           <LevelBadge level={issue.level} />
           <StatusBadge status={issue.status} />
         </span>
+        {projectName !== undefined && (
+          <span className="text-muted-foreground mt-1 block truncate text-xs md:hidden">{projectName}</span>
+        )}
       </TableCell>
+
+      {projectName !== undefined && (
+        <TableCell className="w-36 max-md:hidden">
+          <span className="block truncate text-sm" title={issue.project_slug}>
+            {projectName}
+          </span>
+        </TableCell>
+      )}
 
       <TableCell className="w-28 max-md:hidden">
         <Sparkline counts={sparklineCounts(issue)} window={sparklineWindow(issue)} className="h-5 w-24" />
