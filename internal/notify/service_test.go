@@ -168,13 +168,13 @@ func TestSendTestUsesTheStoredDestination(t *testing.T) {
 	repository.secrets[3] = "123456789:token"
 	transport := &recordingTransport{}
 
-	err := NewService(repository, transport, ServiceOptions{PublicURL: "https://faultline.example/"}).SendTest(t.Context(), 1, 3, ProjectRef{Slug: "shop", Name: "Shop"})
+	err := NewService(repository, transport, ServiceOptions{PublicURL: "https://faultline.example/"}).SendTest(t.Context(), 1, 3, ProjectRef{Slug: "shop", Name: "Shop", IconEmoji: "🛒"})
 
 	if err != nil {
 		t.Fatalf("SendTest = %v", err)
 	}
 	want := Destination{Kind: KindTelegram, Target: "-100", Secret: "123456789:token"}
-	if transport.destination != want || transport.notification.Trigger != TriggerTest || transport.notification.IssueURL != "https://faultline.example/shop/issues" {
+	if transport.destination != want || transport.notification.ProjectEmoji != "🛒" || transport.notification.Trigger != TriggerTest || transport.notification.IssueURL != "https://faultline.example/shop/issues" {
 		t.Fatalf("sent %+v to %+v", transport.notification, transport.destination)
 	}
 }

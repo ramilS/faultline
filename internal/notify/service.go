@@ -45,8 +45,9 @@ type ChannelRepository interface {
 
 // ProjectRef names the project a test message is sent for.
 type ProjectRef struct {
-	Slug string
-	Name string
+	IconEmoji string
+	Slug      string
+	Name      string
 }
 
 type ServiceOptions struct {
@@ -130,12 +131,13 @@ func (s *Service) SendTest(ctx context.Context, projectID, channelID int64, proj
 		return fmt.Errorf("send test notification: %w", err)
 	}
 	notification := Notification{
-		Trigger:     TriggerTest,
-		ProjectSlug: project.Slug,
-		ProjectName: project.Name,
-		Title:       "This is a test notification from Faultline",
-		Level:       "info",
-		IssueURL:    s.projectURL(project.Slug),
+		Trigger:      TriggerTest,
+		ProjectSlug:  project.Slug,
+		ProjectName:  project.Name,
+		ProjectEmoji: project.IconEmoji,
+		Title:        "This is a test notification from Faultline",
+		Level:        levelInfo,
+		IssueURL:     s.projectURL(project.Slug),
 	}
 	return s.transport.Send(ctx, destination, notification, 0)
 }

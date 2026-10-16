@@ -1,4 +1,5 @@
-import { Check, ChevronsUpDown, FolderOpen } from "lucide-react";
+import { Check, ChevronsUpDown } from "lucide-react";
+import { ProjectIdentity } from "@/features/projects/ProjectIdentity";
 import { useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 
@@ -29,7 +30,7 @@ export function ProjectSwitcher() {
           className="w-full justify-between font-normal"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <FolderOpen className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
+            <ProjectIdentity project={active ?? {}} />
             <span className="truncate">{active?.name ?? "Select project"}</span>
           </span>
           <ChevronsUpDown className="text-muted-foreground size-4 shrink-0" aria-hidden="true" />
@@ -51,7 +52,7 @@ export function ProjectSwitcher() {
                   }}
                 >
                   <Check className={cn("size-4", project.slug === slug ? "opacity-100" : "opacity-0")} />
-                  <span className="truncate">{project.name}</span>
+                  <ProjectIdentity project={project} /><span className="truncate">{project.name}</span>
                   <span className="text-muted-foreground ml-auto font-mono text-xs">{project.slug}</span>
                 </CommandItem>
               ))}

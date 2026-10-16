@@ -598,3 +598,48 @@ func TestListKeysReturnsTheFullPublicKeyForAnOwner(t *testing.T) {
 		t.Fatalf("an owner must receive the full key: %s", response.Body.String())
 	}
 }
+
+func TestProjectIdentityAPI(t *testing.T) {
+	for _, body := range []string{
+		`{"name":"Web","platform":"go"}`,
+		`{"name":"Web","platform":"go","icon_emoji":"","icon_image":""}`,
+		`{"name":"Web","platform":"go","icon_emoji":"👩🏽‍💻"}`,
+	} {
+		service := &projectServiceStub{updated: project.Project{IconEmoji: "🚀", IconImage: "data:image/png;base64,test"}}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPatch, "/api/v1/projects/web", strings.NewReader(body))
+		request.Header.Set("Content-Type", "application/json")
+		newProjectHandler(service).UpdateProject(recorder, request)
+		if recorder.Code != 200 {
+			t.Fatalf("status %d: %s", recorder.Code, recorder.Body.String())
+		}
+		got := service.updateInputs[0]
+		if strings.Contains(body, `"icon_image"`) {
+			if got.IconImage == nil || *got.IconImage != "" {
+				t.Fatal("explicit clear lost")
+			}
+		} else if got.IconImage != nil {
+			t.Fatal("omitted image not nil")
+		}
+		if strings.Contains(body, `"icon_emoji"`) {
+			if got.IconEmoji == nil {
+				t.Fatal("emoji lost")
+			}
+		} else if got.IconEmoji != nil {
+			t.Fatal("omitted emoji not nil")
+		}
+		if !strings.Contains(recorder.Body.String(), `"icon_emoji":"🚀"`) || !strings.Contains(recorder.Body.String(), `"icon_image":"data:image/png;base64,test"`) {
+			t.Fatal("response lost identity")
+		}
+	}
+	for _, field := range []string{`"icon_emoji":"bad emoji"`, `"icon_image":"data:image/png;base64,bad"`} {
+		service := &projectServiceStub{}
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, "/api/v1/projects", strings.NewReader(`{"slug":"web","name":"Web","platform":"go",`+field+`}`))
+		request.Header.Set("Content-Type", "application/json")
+		newProjectHandler(service).CreateProject(recorder, request)
+		if recorder.Code != 400 || len(service.createInputs) != 0 {
+			t.Fatalf("invalid identity status %d", recorder.Code)
+		}
+	}
+}

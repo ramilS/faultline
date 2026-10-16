@@ -185,6 +185,9 @@ func TestNotificationQueueLifecycle(t *testing.T) {
 	channel := createChannel(t, ctx, channels, projectID, notify.ChannelInput{Name: "hook", Kind: notify.KindWebhook, Target: "https://hooks.example/x", Secret: &secret, Enabled: true, NotifyNew: true})
 	base := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	persistEvent(t, ctx, sink, projectID, hex64("notify-queue"), "fatal", "production", base)
+	if _, err := pool.Exec(ctx, `UPDATE projects SET icon_emoji = '🚀' WHERE id = $1`, projectID); err != nil {
+		t.Fatal(err)
+	}
 	now := time.Now()
 
 	claimed, err := queue.Claim(ctx, now, 10, time.Minute)
@@ -192,7 +195,7 @@ func TestNotificationQueueLifecycle(t *testing.T) {
 		t.Fatalf("Claim = %+v, %v; want one delivery", claimed, err)
 	}
 	delivery := claimed[0]
-	wantNotification := notify.Notification{Trigger: notify.TriggerNew, ProjectSlug: "web", ProjectName: "Web", IssueID: delivery.Notification.IssueID, Title: "boom", Culprit: "app.js", Level: "fatal", Environment: "production"}
+	wantNotification := notify.Notification{Trigger: notify.TriggerNew, ProjectSlug: "web", ProjectName: "Web", ProjectEmoji: "🚀", IssueID: delivery.Notification.IssueID, Title: "boom", Culprit: "app.js", Level: "fatal", Environment: "production"}
 	if delivery.Attempts != 1 || delivery.ChannelID != channel.ID || delivery.Notification != wantNotification ||
 		delivery.Destination != (notify.Destination{Kind: notify.KindWebhook, Target: "https://hooks.example/x", Secret: "signing-key"}) {
 		t.Fatalf("claimed %+v", delivery)

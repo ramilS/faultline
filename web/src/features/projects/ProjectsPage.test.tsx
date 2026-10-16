@@ -95,6 +95,12 @@ describe("ProjectsPage project list", () => {
     expect(screen.queryByText("kotlin-multiplatform")).toBeNull();
   });
 
+  it("shows the saved project emoji in the list", () => {
+    listed.projects[0].icon_emoji = "🛒";
+    render(<MemoryRouter><ProjectsPage /></MemoryRouter>);
+    expect(screen.getByText("🛒")).toBeDefined();
+  });
+
   it("shows a stored value that is not a known platform as it is", () => {
     render(
       <MemoryRouter>
@@ -144,7 +150,7 @@ describe("ProjectsPage create-project platform picker", () => {
 
       fireEvent.click(screen.getByRole("button", { name: "Create project" }));
 
-      expect(mockedCreateProject).toHaveBeenCalledWith({ slug: "app", name: "App", platform: value });
+      expect(mockedCreateProject).toHaveBeenCalledWith({ slug: "app", name: "App", platform: value, icon_emoji: "", icon_image: "" });
     }
   );
 });
@@ -160,6 +166,15 @@ describe("ProjectsPage create-project slug", () => {
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shop App" } });
 
     expect((screen.getByLabelText("Slug") as HTMLInputElement).value).toBe("shop-app");
+  });
+
+  it("sends the selected project emoji when creating a project", () => {
+    mockedCreateProject.mockResolvedValue({ id: 9, slug: "shop", name: "Shop", platform: "javascript", created_at: "2026-07-13T08:00:00Z" });
+    openCreateDialog();
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shop" } });
+    fireEvent.click(screen.getByRole("button", { name: "Use 🛒" }));
+    fireEvent.click(screen.getByRole("button", { name: "Create project" }));
+    expect(mockedCreateProject).toHaveBeenCalledWith({ slug: "shop", name: "Shop", platform: "javascript", icon_emoji: "🛒", icon_image: "" });
   });
 
   it("stops following the name once the slug has been edited by hand", () => {

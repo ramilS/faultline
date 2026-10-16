@@ -61,7 +61,7 @@ type reportedError struct {
 }
 
 func newNotificationHandler(service NotificationService) (*NotificationHandler, *reportedError) {
-	projects := &stubGroupingRuleProjects{project: project.Project{ID: 5, Slug: "shop", Name: "Shop"}}
+	projects := &stubGroupingRuleProjects{project: project.Project{ID: 5, Slug: "shop", Name: "Shop", IconEmoji: "🛒"}}
 	reported := &reportedError{}
 	return NewNotificationHandler(service, projects, Options{ReportError: func(err error) { reported.last = err }}), reported
 }
@@ -202,7 +202,7 @@ func TestSendTestNotificationNamesTheProject(t *testing.T) {
 	handler, _ := newNotificationHandler(service)
 	handler.SendTest(recorder, notificationRequest(http.MethodPost, "/", ""))
 
-	if recorder.Code != http.StatusNoContent || service.testedFor != (notify.ProjectRef{Slug: "shop", Name: "Shop"}) {
+	if recorder.Code != http.StatusNoContent || service.testedFor != (notify.ProjectRef{Slug: "shop", Name: "Shop", IconEmoji: "🛒"}) {
 		t.Fatalf("status = %d, tested for %+v", recorder.Code, service.testedFor)
 	}
 }

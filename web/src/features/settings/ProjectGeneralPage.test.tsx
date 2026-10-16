@@ -74,6 +74,14 @@ describe("ProjectGeneralPage", () => {
     expect(listed.reload).toHaveBeenCalledTimes(1);
   });
 
+  it("saves a selected icon with other project settings", async () => {
+    updateProject.mockResolvedValue({ id: 3, slug: "acme", name: "Acme", platform: "javascript", icon_emoji: "🚀", created_at: "2026-07-13T08:00:00Z" });
+    renderPage();
+    fireEvent.click(screen.getByRole("button", { name: "Use 🚀" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save" }));
+    await waitFor(() => expect(updateProject).toHaveBeenCalledWith("acme", { name: "Acme", platform: "javascript", icon_emoji: "🚀" }));
+  });
+
   it("shows the server's error and does not claim the save", async () => {
     updateProject.mockRejectedValue(new ApiError(400, "invalid project"));
 

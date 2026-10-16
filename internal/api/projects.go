@@ -13,7 +13,7 @@ import (
 	"github.com/ramilS/faultline/internal/project"
 )
 
-const projectBodyLimit = 16 << 10
+const projectBodyLimit = project.MaxIconDataURLBytes + (16 << 10)
 
 // ProjectService is the project and ingest-key behavior required by the HTTP
 // layer. Key operations are slug-scoped to match the public route contract.
@@ -41,17 +41,23 @@ func NewProjectHandler(service ProjectService, options Options) *ProjectHandler 
 }
 
 type createProjectRequest struct {
-	Slug     string `json:"slug"`
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
+	IconEmoji string `json:"icon_emoji"`
+	IconImage string `json:"icon_image"`
+	Slug      string `json:"slug"`
+	Name      string `json:"name"`
+	Platform  string `json:"platform"`
 }
 
 type updateProjectRequest struct {
-	Name     string `json:"name"`
-	Platform string `json:"platform"`
+	IconEmoji *string `json:"icon_emoji"`
+	IconImage *string `json:"icon_image"`
+	Name      string  `json:"name"`
+	Platform  string  `json:"platform"`
 }
 
 type projectResponse struct {
+	IconEmoji string `json:"icon_emoji"`
+	IconImage string `json:"icon_image"`
 	ID        int64  `json:"id"`
 	Slug      string `json:"slug"`
 	Name      string `json:"name"`
@@ -131,7 +137,7 @@ func (h *ProjectHandler) CreateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	create := project.CreateProject{Slug: input.Slug, Name: input.Name, Platform: input.Platform}
+	create := project.CreateProject{Slug: input.Slug, Name: input.Name, Platform: input.Platform, IconEmoji: input.IconEmoji, IconImage: input.IconImage}
 	if err := project.ValidateCreateProject(create); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid project")
 		return
@@ -159,7 +165,7 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid request")
 		return
 	}
-	update := project.UpdateProject{Name: input.Name, Platform: input.Platform}
+	update := project.UpdateProject{Name: input.Name, Platform: input.Platform, IconEmoji: input.IconEmoji, IconImage: input.IconImage}
 	if err := project.ValidateUpdateProject(update); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid project")
 		return
@@ -287,6 +293,7 @@ func (h *ProjectHandler) resolveProject(w http.ResponseWriter, r *http.Request, 
 
 func toProjectResponse(source project.Project) projectResponse {
 	return projectResponse{
+		IconEmoji: source.IconEmoji, IconImage: source.IconImage,
 		ID:        source.ID,
 		Slug:      source.Slug,
 		Name:      source.Name,

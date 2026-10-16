@@ -178,7 +178,7 @@ func (h *NotificationHandler) SendTest(w http.ResponseWriter, r *http.Request) {
 	if !ok {
 		return
 	}
-	err := h.service.SendTest(r.Context(), resolved.ID, channelID, notify.ProjectRef{Slug: resolved.Slug, Name: resolved.Name})
+	err := h.service.SendTest(r.Context(), resolved.ID, channelID, notify.ProjectRef{Slug: resolved.Slug, Name: resolved.Name, IconEmoji: resolved.IconEmoji})
 	if failure, ok := errors.AsType[*notify.SendError](err); ok {
 		writeError(w, http.StatusBadGateway, failure.Message)
 		return

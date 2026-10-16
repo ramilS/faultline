@@ -1,4 +1,6 @@
 export interface Project {
+  icon_emoji?: string;
+  icon_image?: string;
   id: number;
   slug: string;
   name: string;
@@ -36,6 +38,8 @@ export interface CreatedArtifactToken {
 }
 
 export interface CreateProjectInput {
+  icon_emoji?: string;
+  icon_image?: string;
   slug: string;
   name: string;
   platform: string;
@@ -43,6 +47,8 @@ export interface CreateProjectInput {
 
 /** The slug is not editable: it is the project's address in URLs and upload paths. */
 export interface UpdateProjectInput {
+  icon_emoji?: string;
+  icon_image?: string;
   name: string;
   platform: string;
 }

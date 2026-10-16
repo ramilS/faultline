@@ -6,6 +6,8 @@ import (
 	"bytes"
 	"context"
 	"errors"
+	"image"
+	"image/png"
 	"testing"
 	"time"
 
@@ -60,6 +62,55 @@ func TestProjectRepository(t *testing.T) {
 			t.Fatalf("listed projects = %+v, want ordered by id", listed)
 		}
 		assertProjectUTC(t, "listed project", listed[0].CreatedAt)
+	})
+
+	t.Run("identity roundtrips and independent clears preserve omissions", func(t *testing.T) {
+		var pixels bytes.Buffer
+		if err := png.Encode(&pixels, image.NewRGBA(image.Rect(0, 0, 2, 2))); err != nil {
+			t.Fatal(err)
+		}
+		icon := project.IconDataURL(pixels.Bytes())
+		created, err := projects.Create(ctx, project.CreateProject{Slug: "identity", Name: "Identity", Platform: project.PlatformGo, IconEmoji: "👩🏽‍💻", IconImage: icon})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if created.IconEmoji != "👩🏽‍💻" || created.IconImage != icon {
+			t.Fatalf("created identity %+v", created)
+		}
+		found, err := projects.FindBySlug(ctx, access.Unrestricted(), "identity")
+		if err != nil || found != created {
+			t.Fatalf("found %+v: %v", found, err)
+		}
+		listed, err := projects.List(ctx, access.Unrestricted())
+		if err != nil {
+			t.Fatal(err)
+		}
+		present := false
+		for _, p := range listed {
+			if p == created {
+				present = true
+			}
+		}
+		if !present {
+			t.Fatal("identity not listed")
+		}
+		preserved, err := projects.Update(ctx, "identity", project.UpdateProject{Name: "Renamed", Platform: project.PlatformGo})
+		if err != nil || preserved.IconImage != icon || preserved.IconEmoji != created.IconEmoji {
+			t.Fatalf("omitted fields not preserved: %+v, %v", preserved, err)
+		}
+		empty := ""
+		cleared, err := projects.Update(ctx, "identity", project.UpdateProject{Name: "Renamed", Platform: project.PlatformGo, IconImage: &empty})
+		if err != nil || cleared.IconImage != "" || cleared.IconEmoji != created.IconEmoji {
+			t.Fatalf("image clear %+v, %v", cleared, err)
+		}
+		cleared, err = projects.Update(ctx, "identity", project.UpdateProject{Name: "Renamed", Platform: project.PlatformGo, IconEmoji: &empty})
+		if err != nil || cleared.IconEmoji != "" {
+			t.Fatalf("emoji clear %+v, %v", cleared, err)
+		}
+		var raw []byte
+		if err := pool.QueryRow(ctx, `SELECT icon_image FROM projects WHERE slug = 'identity'`).Scan(&raw); err != nil || raw != nil {
+			t.Fatalf("clear should store NULL: %v", err)
+		}
 	})
 
 	t.Run("updates name and platform but keeps slug and creation time", func(t *testing.T) {

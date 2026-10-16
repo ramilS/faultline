@@ -196,7 +196,7 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 			RETURNING d.id, d.channel_id, d.issue_id, d.trigger, d.environment, d.attempts
 		)
 		SELECT claimed.id, claimed.channel_id, claimed.attempts, claimed.trigger, claimed.environment,
-		       c.kind, c.target, c.secret, p.slug, p.name, i.id, i.title, i.culprit, i.level
+		       c.kind, c.target, c.secret, p.slug, p.name, p.icon_emoji, i.id, i.title, i.culprit, i.level
 		FROM claimed
 		JOIN notification_channels c ON c.id = claimed.channel_id
 		JOIN projects p ON p.id = c.project_id
@@ -214,7 +214,7 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 		n := &delivery.Notification
 		d := &delivery.Destination
 		if err := rows.Scan(&delivery.ID, &delivery.ChannelID, &delivery.Attempts, &n.Trigger, &n.Environment,
-			&d.Kind, &d.Target, &d.Secret, &n.ProjectSlug, &n.ProjectName, &n.IssueID, &n.Title, &n.Culprit, &n.Level); err != nil {
+			&d.Kind, &d.Target, &d.Secret, &n.ProjectSlug, &n.ProjectName, &n.ProjectEmoji, &n.IssueID, &n.Title, &n.Culprit, &n.Level); err != nil {
 			return nil, fmt.Errorf("scan notification delivery: %w", err)
 		}
 		deliveries = append(deliveries, delivery)

@@ -40,6 +40,8 @@ var (
 
 // Project is a configured application that can receive ingest events.
 type Project struct {
+	IconEmoji string
+	IconImage string
 	ID        int64
 	Slug      string
 	Name      string
@@ -60,17 +62,21 @@ type Key struct {
 
 // CreateProject is the repository input for a new project.
 type CreateProject struct {
-	Slug     string
-	Name     string
-	Platform string
+	IconEmoji string
+	IconImage string
+	Slug      string
+	Name      string
+	Platform  string
 }
 
 // UpdateProject is the repository input for editing a project. The slug is
 // absent on purpose: it is the project's address in dashboard URLs and in the
 // sentry-cli upload paths, so it is fixed at creation.
 type UpdateProject struct {
-	Name     string
-	Platform string
+	IconEmoji *string
+	IconImage *string
+	Name      string
+	Platform  string
 }
 
 // CreateKey is the repository input for a new ingest key.

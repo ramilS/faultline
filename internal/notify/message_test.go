@@ -17,10 +17,10 @@ func TestTelegramTextEscapesUserControlledText(t *testing.T) {
 		IssueURL:    "https://faultline.example/shop/issues/7?a=1&b=2",
 	})
 
-	want := "<b>New issue</b>\n<b>Shop &amp; Co</b>\n\n" +
+	want := "<b>🆕 New issue</b>\n<b>📁 Shop &amp; Co</b>\n\n" +
 		"<blockquote>TypeError: &lt;b&gt;x&lt;/b&gt; is undefined</blockquote>\n\n" +
 		"<b>Location:</b> <code>render(&lt;App/&gt;)</code>\n" +
-		"<b>Level:</b> <code>error &amp; &lt;fatal&gt;</code>\n" +
+		"<b>Level:</b> ❔ <code>error &amp; &lt;fatal&gt;</code>\n" +
 		"<b>Environment:</b> <code>prod &amp; &lt;blue&gt;</code>\n\n" +
 		`<a href="https://faultline.example/shop/issues/7?a=1&amp;b=2">Open in Faultline →</a>`
 	if text != want {
@@ -31,7 +31,7 @@ func TestTelegramTextEscapesUserControlledText(t *testing.T) {
 func TestTelegramTextOmitsAbsentCulpritEnvironmentAndLink(t *testing.T) {
 	text := TelegramText(Notification{Trigger: TriggerRegression, ProjectName: "Shop", Title: "boom", Level: "fatal"})
 
-	if want := "<b>Regression</b>\n<b>Shop</b>\n\n<blockquote>boom</blockquote>\n\n<b>Level:</b> <code>fatal</code>"; text != want {
+	if want := "<b>🔁 Regression</b>\n<b>📁 Shop</b>\n\n<blockquote>boom</blockquote>\n\n<b>Level:</b> 💀 <code>fatal</code>"; text != want {
 		t.Fatalf("TelegramText = %q, want %q", text, want)
 	}
 }
@@ -89,5 +89,14 @@ func TestIssueURL(t *testing.T) {
 				t.Fatalf("IssueURL = %q, want %q", got, tc.want)
 			}
 		})
+	}
+}
+
+func TestTelegramIdentityAndSeverity(t *testing.T) {
+	for _, tc := range []struct{ level, icon string }{{"fatal", "💀"}, {"error", "🔴"}, {"warning", "⚠️"}, {"info", "ℹ️"}, {"debug", "🐛"}, {"unknown", "❔"}} {
+		text := TelegramText(Notification{Trigger: TriggerTest, ProjectName: "Shop", ProjectEmoji: "<&", Level: tc.level})
+		if !strings.Contains(text, "🧪 Test notification") || !strings.Contains(text, "&lt;&amp; Shop") || !strings.Contains(text, "Level:</b> "+tc.icon+" <code>"+tc.level+"</code>") {
+			t.Fatalf("unexpected message %s", text)
+		}
 	}
 }

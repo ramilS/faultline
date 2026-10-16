@@ -27,11 +27,24 @@ func ValidateCreateProject(input CreateProject) error {
 	if !validSlug(input.Slug) {
 		return fmt.Errorf("invalid project slug")
 	}
-	return validateNameAndPlatform(input.Name, input.Platform)
+	if err := validateNameAndPlatform(input.Name, input.Platform); err != nil {
+		return err
+	}
+	return validateIdentity(input.IconEmoji, input.IconImage)
 }
 
 func ValidateUpdateProject(input UpdateProject) error {
-	return validateNameAndPlatform(input.Name, input.Platform)
+	if err := validateNameAndPlatform(input.Name, input.Platform); err != nil {
+		return err
+	}
+	var emoji, image string
+	if input.IconEmoji != nil {
+		emoji = *input.IconEmoji
+	}
+	if input.IconImage != nil {
+		image = *input.IconImage
+	}
+	return validateIdentity(emoji, image)
 }
 
 func validateNameAndPlatform(name, platform string) error {
@@ -85,6 +98,11 @@ func (s *Service) CreateProject(ctx context.Context, input CreateProject) (Proje
 	if err := ValidateCreateProject(input); err != nil {
 		return Project{}, err
 	}
+	normalized, err := NormalizeIconImage(input.IconImage)
+	if err != nil {
+		return Project{}, err
+	}
+	input.IconImage = normalized
 	project, err := s.projects.Create(ctx, input)
 	if err != nil {
 		return Project{}, fmt.Errorf("create project: %w", err)
@@ -98,6 +116,13 @@ func (s *Service) UpdateProject(ctx context.Context, slug string, input UpdatePr
 	input.Name = strings.TrimSpace(input.Name)
 	if err := ValidateUpdateProject(input); err != nil {
 		return Project{}, err
+	}
+	if input.IconImage != nil {
+		normalized, err := NormalizeIconImage(*input.IconImage)
+		if err != nil {
+			return Project{}, err
+		}
+		input.IconImage = &normalized
 	}
 	updated, err := s.projects.Update(ctx, slug, input)
 	if err != nil {

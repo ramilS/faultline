@@ -1,3 +1,4 @@
+import { ProjectIdentityEditor, ProjectIdentity, validProjectEmoji } from "@/features/projects/ProjectIdentity";
 import { FolderPlus, Plus } from "lucide-react";
 import { useState, type FormEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
@@ -76,7 +77,7 @@ export function ProjectsPage() {
                   to={`/${project.slug}/issues`}
                   className="hover:border-foreground/20 hover:bg-accent/40 block rounded-lg border p-4 transition-colors"
                 >
-                  <span className="block truncate font-medium">{project.name}</span>
+                  <span className="flex items-center gap-2"><ProjectIdentity project={project} /><span className="truncate font-medium">{project.name}</span></span>
                   <span className="text-muted-foreground mt-0.5 block truncate font-mono text-xs">
                     {project.slug}
                   </span>
@@ -99,6 +100,9 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
   // name; after that it is theirs, and a later name edit must not overwrite it.
   const [slugEdited, setSlugEdited] = useState(false);
   const [name, setName] = useState("");
+  const [emoji, setEmoji] = useState("");
+  const [image, setImage] = useState("");
+  const [imageBusy, setImageBusy] = useState(false);
   const [platform, setPlatform] = useState<Platform>(PLATFORMS[0].value);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -108,11 +112,12 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
     setSubmitting(true);
     setError(null);
     try {
-      const created = await api.createProject({ slug, name, platform });
+      const created = await api.createProject({ slug, name, platform, icon_emoji: emoji, icon_image: image });
       await onCreated();
       setSlug("");
       setSlugEdited(false);
       setName("");
+      setEmoji(""); setImage("");
       setPlatform(PLATFORMS[0].value);
       setOpen(false);
       // A project cannot receive events until it has a key, so that is the next
@@ -133,7 +138,7 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
           New project
         </Button>
       </DialogTrigger>
-      <DialogContent>
+      <DialogContent className="max-h-[calc(100dvh-2rem)] overflow-y-auto">
         <form onSubmit={submit}>
           <DialogHeader>
             <DialogTitle>New project</DialogTitle>
@@ -184,6 +189,8 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
               </p>
             </div>
 
+            <ProjectIdentityEditor emoji={emoji} image={image} disabled={submitting} onBusyChange={setImageBusy} onChange={(nextEmoji, nextImage) => { setEmoji(nextEmoji); setImage(nextImage); }} />
+
             <div className="space-y-2">
               <Label htmlFor="project-platform">Platform</Label>
               <PlatformSelect id="project-platform" value={platform} onChange={setPlatform} />
@@ -194,7 +201,7 @@ function CreateProjectDialog({ onCreated }: { onCreated: () => Promise<void> }) 
             <Button type="button" variant="outline" onClick={() => setOpen(false)}>
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" disabled={submitting || imageBusy || !validProjectEmoji(emoji)}>
               {submitting ? "Creating…" : "Create project"}
             </Button>
           </DialogFooter>

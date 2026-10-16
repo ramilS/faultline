@@ -1,4 +1,5 @@
-import { useState, type FormEvent } from "react";
+import { ProjectIdentityEditor, validProjectEmoji } from "@/features/projects/ProjectIdentity";
+import { useRef, useState, type FormEvent } from "react";
 import { Navigate, useParams } from "react-router-dom";
 
 import type { Project } from "@/api";
@@ -55,13 +56,25 @@ interface ProjectFormProps {
 
 function ProjectForm({ project, editable, onSaved }: ProjectFormProps) {
   const [name, setName] = useState(project.name);
+  const [emoji, setEmoji] = useState(project.icon_emoji ?? "");
+  const [image, setImage] = useState(project.icon_image ?? "");
+  const savedEmoji = useRef(project.icon_emoji ?? "");
+  const savedImage = useRef(project.icon_image ?? "");
+  const [imageBusy, setImageBusy] = useState(false);
   const [platform, setPlatform] = useState(project.platform);
   const { submitting, error, saved, touch, submit: save } = useSaveForm();
 
   const submit = async (event: FormEvent) => {
     event.preventDefault();
     await save(async () => {
-      await api.updateProject(project.slug, { name, platform });
+      await api.updateProject(project.slug, {
+        name,
+        platform,
+        ...(emoji !== savedEmoji.current ? { icon_emoji: emoji } : {}),
+        ...(image !== savedImage.current ? { icon_image: image } : {})
+      });
+      savedEmoji.current = emoji;
+      savedImage.current = image;
       // The switcher and the projects list read the shared list, so they must
       // see the new name too.
       await onSaved();
@@ -83,6 +96,8 @@ function ProjectForm({ project, editable, onSaved }: ProjectFormProps) {
           }}
         />
       </div>
+
+      <ProjectIdentityEditor emoji={emoji} image={image} disabled={!editable || submitting} onBusyChange={setImageBusy} onChange={(nextEmoji, nextImage) => { setEmoji(nextEmoji); setImage(nextImage); touch(); }} />
 
       <div className="space-y-2">
         <Label htmlFor="project-slug">Slug</Label>
@@ -119,7 +134,7 @@ function ProjectForm({ project, editable, onSaved }: ProjectFormProps) {
         </p>
       )}
       {editable && (
-        <Button type="submit" disabled={submitting}>
+        <Button type="submit" disabled={submitting || imageBusy || !validProjectEmoji(emoji)}>
           {submitting ? "Saving…" : "Save"}
         </Button>
       )}

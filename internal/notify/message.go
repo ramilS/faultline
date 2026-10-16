@@ -43,12 +43,16 @@ func headline(trigger Trigger) string {
 // escapes quotes, which Telegram accepts as entities.
 func TelegramText(n Notification) string {
 	var text strings.Builder
-	fmt.Fprintf(&text, "<b>%s</b>\n<b>%s</b>\n\n", headline(n.Trigger), html.EscapeString(n.ProjectName))
+	emoji := n.ProjectEmoji
+	if emoji == "" {
+		emoji = "📁"
+	}
+	fmt.Fprintf(&text, "<b>%s %s</b>\n<b>%s %s</b>\n\n", triggerIcon(n.Trigger), headline(n.Trigger), html.EscapeString(emoji), html.EscapeString(n.ProjectName))
 	fmt.Fprintf(&text, "<blockquote>%s</blockquote>\n", html.EscapeString(truncate(n.Title, maxTitleRunes)))
 	if n.Culprit != "" {
 		fmt.Fprintf(&text, "\n<b>Location:</b> <code>%s</code>", html.EscapeString(truncate(n.Culprit, maxCulpritRunes)))
 	}
-	fmt.Fprintf(&text, "\n<b>Level:</b> <code>%s</code>", html.EscapeString(n.Level))
+	fmt.Fprintf(&text, "\n<b>Level:</b> %s <code>%s</code>", levelIcon(n.Level), html.EscapeString(n.Level))
 	if n.Environment != "" {
 		fmt.Fprintf(&text, "\n<b>Environment:</b> <code>%s</code>", html.EscapeString(n.Environment))
 	}
@@ -110,4 +114,31 @@ func truncate(value string, limit int) string {
 		return value
 	}
 	return string(runes[:limit-1]) + "…"
+}
+
+func triggerIcon(trigger Trigger) string {
+	switch trigger {
+	case TriggerNew:
+		return "🆕"
+	case TriggerRegression:
+		return "🔁"
+	case TriggerTest:
+		return "🧪"
+	}
+	return "❔"
+}
+func levelIcon(level string) string {
+	switch level {
+	case "fatal":
+		return "💀"
+	case "error":
+		return "🔴"
+	case "warning":
+		return "⚠️"
+	case levelInfo:
+		return "ℹ️"
+	case "debug":
+		return "🐛"
+	}
+	return "❔"
 }

@@ -85,19 +85,22 @@ type Destination struct {
 // Notification is the rendered-independent content of one message.
 // IssueURL is empty when the instance has no public URL configured.
 type Notification struct {
-	Trigger     Trigger
-	ProjectSlug string
-	ProjectName string
-	IssueID     int64
-	Title       string
-	Culprit     string
-	Level       string
-	Environment string
-	IssueURL    string
+	Trigger      Trigger
+	ProjectSlug  string
+	ProjectName  string
+	ProjectEmoji string
+	IssueID      int64
+	Title        string
+	Culprit      string
+	Level        string
+	Environment  string
+	IssueURL     string
 }
 
 // levelRanks orders the levels ingest accepts (see ingest.validLevel).
-var levelRanks = map[string]int{"debug": 0, "info": 1, "warning": 2, "error": 3, "fatal": 4}
+const levelInfo = "info"
+
+var levelRanks = map[string]int{"debug": 0, levelInfo: 1, "warning": 2, "error": 3, "fatal": 4}
 
 func validLevel(level string) bool {
 	_, ok := levelRanks[level]
