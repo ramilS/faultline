@@ -12,16 +12,17 @@ func TestTelegramTextEscapesUserControlledText(t *testing.T) {
 		ProjectName: "Shop & Co",
 		Title:       "TypeError: <b>x</b> is undefined",
 		Culprit:     "render(<App/>)",
-		Level:       "error",
-		Environment: "prod",
+		Level:       "error & <fatal>",
+		Environment: "prod & <blue>",
 		IssueURL:    "https://faultline.example/shop/issues/7?a=1&b=2",
 	})
 
-	want := "<b>New issue</b> in Shop &amp; Co\n" +
-		"TypeError: &lt;b&gt;x&lt;/b&gt; is undefined\n" +
-		"<code>render(&lt;App/&gt;)</code>\n" +
-		"level: error · env: prod\n" +
-		`<a href="https://faultline.example/shop/issues/7?a=1&amp;b=2">Open in Faultline</a>`
+	want := "<b>New issue</b>\n<b>Shop &amp; Co</b>\n\n" +
+		"<blockquote>TypeError: &lt;b&gt;x&lt;/b&gt; is undefined</blockquote>\n\n" +
+		"<b>Location:</b> <code>render(&lt;App/&gt;)</code>\n" +
+		"<b>Level:</b> <code>error &amp; &lt;fatal&gt;</code>\n" +
+		"<b>Environment:</b> <code>prod &amp; &lt;blue&gt;</code>\n\n" +
+		`<a href="https://faultline.example/shop/issues/7?a=1&amp;b=2">Open in Faultline →</a>`
 	if text != want {
 		t.Fatalf("TelegramText =\n%s\nwant\n%s", text, want)
 	}
@@ -30,7 +31,7 @@ func TestTelegramTextEscapesUserControlledText(t *testing.T) {
 func TestTelegramTextOmitsAbsentCulpritEnvironmentAndLink(t *testing.T) {
 	text := TelegramText(Notification{Trigger: TriggerRegression, ProjectName: "Shop", Title: "boom", Level: "fatal"})
 
-	if want := "<b>Regression</b> in Shop\nboom\nlevel: fatal"; text != want {
+	if want := "<b>Regression</b>\n<b>Shop</b>\n\n<blockquote>boom</blockquote>\n\n<b>Level:</b> <code>fatal</code>"; text != want {
 		t.Fatalf("TelegramText = %q, want %q", text, want)
 	}
 }
@@ -38,7 +39,7 @@ func TestTelegramTextOmitsAbsentCulpritEnvironmentAndLink(t *testing.T) {
 func TestTelegramTextTruncatesALongTitleByRunes(t *testing.T) {
 	text := TelegramText(Notification{Trigger: TriggerNew, Title: strings.Repeat("ж", maxTitleRunes+50), Level: "error"})
 
-	if want := strings.Repeat("ж", maxTitleRunes-1) + "…\n"; !strings.Contains(text, "\n"+want) {
+	if want := strings.Repeat("ж", maxTitleRunes-1) + "…"; !strings.Contains(text, "<blockquote>"+want+"</blockquote>") {
 		t.Fatalf("title was not cut to %d runes ending in an ellipsis: %q", maxTitleRunes, text)
 	}
 }

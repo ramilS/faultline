@@ -43,18 +43,17 @@ func headline(trigger Trigger) string {
 // escapes quotes, which Telegram accepts as entities.
 func TelegramText(n Notification) string {
 	var text strings.Builder
-	fmt.Fprintf(&text, "<b>%s</b> in %s\n", headline(n.Trigger), html.EscapeString(n.ProjectName))
-	fmt.Fprintf(&text, "%s\n", html.EscapeString(truncate(n.Title, maxTitleRunes)))
+	fmt.Fprintf(&text, "<b>%s</b>\n<b>%s</b>\n\n", headline(n.Trigger), html.EscapeString(n.ProjectName))
+	fmt.Fprintf(&text, "<blockquote>%s</blockquote>\n", html.EscapeString(truncate(n.Title, maxTitleRunes)))
 	if n.Culprit != "" {
-		fmt.Fprintf(&text, "<code>%s</code>\n", html.EscapeString(truncate(n.Culprit, maxCulpritRunes)))
+		fmt.Fprintf(&text, "\n<b>Location:</b> <code>%s</code>", html.EscapeString(truncate(n.Culprit, maxCulpritRunes)))
 	}
-	details := []string{"level: " + html.EscapeString(n.Level)}
+	fmt.Fprintf(&text, "\n<b>Level:</b> <code>%s</code>", html.EscapeString(n.Level))
 	if n.Environment != "" {
-		details = append(details, "env: "+html.EscapeString(n.Environment))
+		fmt.Fprintf(&text, "\n<b>Environment:</b> <code>%s</code>", html.EscapeString(n.Environment))
 	}
-	text.WriteString(strings.Join(details, " · "))
 	if n.IssueURL != "" {
-		fmt.Fprintf(&text, "\n<a href=\"%s\">Open in Faultline</a>", html.EscapeString(n.IssueURL))
+		fmt.Fprintf(&text, "\n\n<a href=\"%s\">Open in Faultline →</a>", html.EscapeString(n.IssueURL))
 	}
 	return text.String()
 }
