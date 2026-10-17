@@ -294,7 +294,7 @@ test("listIssueUsers requests the users facet with no query string and returns t
 
 test("patchIssue sends a PATCH with the changed fields", async () => {
   const { fetch, calls } = recordingFetch(
-    jsonResponse(200, { issue: { id: 5, title: "Boom", culprit: "", level: "error", status: "resolved", assignee: null, times_seen: 1, first_seen: "2026-07-16T00:00:00Z", last_seen: "2026-07-16T00:00:00Z", counts_24h: [], counts_14d: [] }, environments: [], releases: [], tags: [] }),
+    jsonResponse(200, { issue: { id: 5, title: "Boom", culprit: "", level: "error", status: "resolved", assignee: null, times_seen: 1, first_seen: "2026-07-16T00:00:00Z", last_seen: "2026-07-16T00:00:00Z", counts_24h: [], counts_14d: [] }, environments: [], releases: [], tags: [], regression: null }),
   );
   const api = createApi(fetch);
 
@@ -457,7 +457,7 @@ test("mergeIssue posts a target_id and returns the merged detail", async () => {
   const { fetch, calls } = recordingFetch(
     jsonResponse(200, {
       issue: { id: 9, title: "Target", culprit: "", level: "error", status: "unresolved", assignee: null, times_seen: 2, first_seen: "2026-07-25T00:00:00Z", last_seen: "2026-07-25T00:00:00Z", counts_24h: [], counts_14d: [] },
-      environments: [], releases: [], tags: [],
+      environments: [], releases: [], tags: [], regression: null,
     }),
   );
   const api = createApi(fetch);
@@ -484,7 +484,7 @@ test("getIssue returns a normal detail and isMergedIssue reports false for it", 
   const { fetch } = recordingFetch(
     jsonResponse(200, {
       issue: { id: 5, title: "Boom", culprit: "", level: "error", status: "unresolved", assignee: null, times_seen: 1, first_seen: "2026-07-16T00:00:00Z", last_seen: "2026-07-16T00:00:00Z", counts_24h: [], counts_14d: [] },
-      environments: [], releases: [], tags: [],
+      environments: [], releases: [], tags: [], regression: null,
     }),
   );
   const api = createApi(fetch);

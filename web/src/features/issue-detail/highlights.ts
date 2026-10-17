@@ -15,10 +15,10 @@ function userIdentity(user: EventUser | null): string | null {
 }
 
 /**
- * A fixed, honest one-glance summary — not Sentry's project-configurable
- * Highlights. Every entry here is a field this dashboard already parses
- * elsewhere; this just puts the handful most useful for triage together,
- * first, on the panel.
+ * The facts about who and where that the page shows nowhere above the trace:
+ * the exception already heads the issue header and the trace itself, and the
+ * environment and release already sit on the event bar, so repeating them
+ * here would spend the strip on things the reader has just read.
  *
  * `fields` is the event's payload already read once by
  * {@link readPayloadFields}; this function re-reads nothing from
@@ -26,25 +26,6 @@ function userIdentity(user: EventUser | null): string | null {
  */
 export function buildHighlights(event: EventDetail, fields: EventPayloadFields): readonly Highlight[] {
   const highlights: Highlight[] = [];
-
-  if (event.symbolicated_exception !== null) {
-    const { type, value } = event.symbolicated_exception;
-    const composed = value ? `${type}: ${value}` : type;
-    if (composed !== "") {
-      highlights.push({ label: "Exception", value: composed });
-    }
-  }
-
-  // Environment is only included when non-empty. EventNavigator.tsx already
-  // defends against empty environment on the read path, so this field is not
-  // guaranteed non-empty here either; omitting it from a summary reads better
-  // than rendering a blank row.
-  if (event.environment !== "") {
-    highlights.push({ label: "Environment", value: event.environment });
-  }
-  if (event.release !== null) {
-    highlights.push({ label: "Release", value: event.release });
-  }
 
   const identity = userIdentity(fields.user);
   if (identity !== null) {

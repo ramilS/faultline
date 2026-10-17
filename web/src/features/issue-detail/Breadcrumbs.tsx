@@ -1,14 +1,16 @@
 import { ChevronRight, Footprints } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import type { EventDetail } from "@/api";
 import { EmptyState } from "@/components/EmptyState";
 import { JsonTree } from "@/components/JsonTree";
 import { LevelBadge } from "@/components/LevelBadge";
-import { RelativeTime } from "@/components/RelativeTime";
+import { Button } from "@/components/ui/button";
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
-import { buildBreadcrumbRows, type BreadcrumbRow } from "./breadcrumbRows";
+import { buildBreadcrumbRows, filterBreadcrumbRows, offsetFromEvent, type BreadcrumbRow } from "./breadcrumbRows";
 import { DetailSection } from "./DetailSection";
 import { readBreadcrumbs } from "./payloadReaders";
 
@@ -17,17 +19,47 @@ interface BreadcrumbsProps {
 }
 
 /**
+ * Rows shown inline, counting the closing row. The steps nearest the error
+ * are nearly always the ones that explain it; the rest of the trail is one
+ * click away rather than a long scroll between the trace and the context
+ * panels below it.
+ */
+const PREVIEW_ROWS = 5;
+
+/**
  * What the user was doing before the error, oldest first, ending with the
  * exception itself so the trail reads to a conclusion rather than stopping
- * mid-air. Sits above the stack trace: the trace says where it broke, this
+ * mid-air. Sits below the stack trace: the trace says where it broke, this
  * says what led there.
  */
 export function Breadcrumbs({ event }: BreadcrumbsProps) {
-  const breadcrumbs = readBreadcrumbs(event.payload);
+  const [allOpen, setAllOpen] = useState(false);
+  const rows = useMemo(
+    () =>
+      buildBreadcrumbRows(readBreadcrumbs(event.payload), {
+        timestamp: event.timestamp,
+        level: event.level,
+        message: event.message
+      }),
+    [event]
+  );
+  // The closing row is always present, so a trail with no breadcrumbs is one row.
+  const crumbCount = rows.length - 1;
+  const preview = rows.slice(-PREVIEW_ROWS);
 
   return (
-    <DetailSection id="section-breadcrumbs" title="Breadcrumbs">
-      {breadcrumbs.length === 0 ? (
+    <DetailSection
+      id="section-breadcrumbs"
+      title="Breadcrumbs"
+      action={
+        rows.length > PREVIEW_ROWS ? (
+          <Button variant="ghost" size="xs" onClick={() => setAllOpen(true)}>
+            View all {crumbCount}
+          </Button>
+        ) : undefined
+      }
+    >
+      {crumbCount === 0 ? (
         <EmptyState
           className="py-8"
           icon={Footprints}
@@ -35,32 +67,74 @@ export function Breadcrumbs({ event }: BreadcrumbsProps) {
           description="Either breadcrumb collection wasn't enabled in the SDK, or this event predates the SDK version that started sending them."
         />
       ) : (
-        <ol className="overflow-hidden rounded-md border">
-          {buildBreadcrumbRows(breadcrumbs, {
-            timestamp: event.timestamp,
-            level: event.level,
-            message: event.message
-          }).map((row) => (
-            <BreadcrumbListItem key={row.key} row={row} />
-          ))}
-        </ol>
+        <BreadcrumbList rows={preview} eventTimestamp={event.timestamp} />
       )}
+
+      <AllBreadcrumbsDialog open={allOpen} onOpenChange={setAllOpen} rows={rows} eventTimestamp={event.timestamp} />
     </DetailSection>
   );
 }
 
-function BreadcrumbListItem({ row }: { row: BreadcrumbRow }) {
+interface AllBreadcrumbsDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  rows: readonly BreadcrumbRow[];
+  eventTimestamp: string;
+}
+
+function AllBreadcrumbsDialog({ open, onOpenChange, rows, eventTimestamp }: AllBreadcrumbsDialogProps) {
+  const [query, setQuery] = useState("");
+  const shown = filterBreadcrumbRows(rows, query);
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="flex max-h-[calc(100dvh-2rem)] flex-col sm:max-w-3xl">
+        <DialogHeader>
+          <DialogTitle>Breadcrumbs</DialogTitle>
+          <DialogDescription>Everything the SDK recorded before this event, oldest first.</DialogDescription>
+        </DialogHeader>
+        <Input
+          aria-label="Filter breadcrumbs"
+          placeholder="Category, level or message"
+          value={query}
+          onChange={(change) => setQuery(change.target.value)}
+        />
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          {shown.length === 0 ? (
+            <p className="text-muted-foreground py-6 text-center text-sm">No breadcrumbs match “{query.trim()}”.</p>
+          ) : (
+            <BreadcrumbList rows={shown} eventTimestamp={eventTimestamp} />
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function BreadcrumbList({ rows, eventTimestamp }: { rows: readonly BreadcrumbRow[]; eventTimestamp: string }) {
+  return (
+    <ol className="overflow-hidden rounded-md border">
+      {rows.map((row) => (
+        <BreadcrumbListItem key={row.key} row={row} eventTimestamp={eventTimestamp} />
+      ))}
+    </ol>
+  );
+}
+
+function BreadcrumbListItem({ row, eventTimestamp }: { row: BreadcrumbRow; eventTimestamp: string }) {
   const [open, setOpen] = useState(false);
   const hasData = row.data !== undefined;
+  const offset = offsetFromEvent(row.timestamp, eventTimestamp);
 
   return (
     <li className={cn("border-t first:border-t-0", row.isClosingRow && "bg-muted/30")}>
       <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1 px-3 py-2 text-sm">
-        {row.timestamp === null ? (
-          <span className="text-muted-foreground w-10 shrink-0 text-xs">—</span>
-        ) : (
-          <RelativeTime iso={row.timestamp} className="text-muted-foreground shrink-0 text-xs" />
-        )}
+        <span
+          className="text-muted-foreground w-16 shrink-0 font-mono text-xs tabular-nums"
+          title={row.timestamp ?? undefined}
+        >
+          {offset ?? "—"}
+        </span>
         <LevelBadge level={row.level} />
         <span className="text-muted-foreground shrink-0 font-mono text-xs">
           {row.category === "" ? "—" : row.category}

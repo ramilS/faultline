@@ -5,6 +5,7 @@ import {
   describeEventScope,
   eventScopeFilters,
   eventScopeFromParams,
+  paramsWithEnvironment,
   paramsWithEventScope,
   type EventScope
 } from "./eventScope.ts";
@@ -71,4 +72,15 @@ test("the description names the environment, the window, or both", () => {
 test("a half-open window is described by the bound it actually has", () => {
   assert.equal(describeEventScope({ environment: "", start: "A", end: "" }, asIs), "Only events received after A.");
   assert.equal(describeEventScope({ environment: "", start: "", end: "B" }, asIs), "Only events received before B.");
+});
+
+test("writing the environment alone leaves every other parameter as it was", () => {
+  const params = new URLSearchParams("event=e1&start=2026-09-01T00:00:00Z");
+
+  assert.equal(paramsWithEnvironment(params, "production").toString(), "event=e1&start=2026-09-01T00%3A00%3A00Z&environment=production");
+  assert.equal(
+    paramsWithEnvironment(new URLSearchParams("environment=production&event=e1"), "").toString(),
+    "event=e1"
+  );
+  assert.equal(paramsWithEnvironment(new URLSearchParams("environment=staging"), "production").toString(), "environment=production");
 });

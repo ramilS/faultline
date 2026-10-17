@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { buildBreadcrumbRows } from "./breadcrumbRows.ts";
+import { buildBreadcrumbRows, filterBreadcrumbRows, offsetFromEvent } from "./breadcrumbRows.ts";
 import type { Breadcrumb } from "./payloadReaders.ts";
 
 const CLOSING_EVENT = { timestamp: "2026-08-11T10:05:00Z", level: "error", message: "TypeError: boom" };
@@ -63,4 +63,43 @@ test("keys are stable and unique across breadcrumb rows and the closing row", ()
   const rows = buildBreadcrumbRows([crumb(), crumb()], CLOSING_EVENT);
   const keys = rows.map((row) => row.key);
   assert.equal(new Set(keys).size, keys.length);
+});
+
+const EVENT_AT = "2026-08-11T10:05:00.000Z";
+
+test("a row's time reads as its distance before the error, at the scale that suits it", () => {
+  const cases: ReadonlyArray<[string | null, string | null]> = [
+    ["2026-08-11T10:05:00.000Z", "0s"],
+    ["2026-08-11T10:04:59.580Z", "−420ms"],
+    ["2026-08-11T10:04:57.900Z", "−2.1s"],
+    ["2026-08-11T10:01:48.000Z", "−3m 12s"],
+    ["2026-08-11T08:00:00.000Z", "−2h 5m"],
+    ["2026-08-11T10:05:00.300Z", "+300ms"],
+    [null, null],
+    ["not a date", null]
+  ];
+  for (const [timestamp, expected] of cases) {
+    assert.equal(offsetFromEvent(timestamp, EVENT_AT), expected, String(timestamp));
+  }
+});
+
+test("filtering matches category, level and message, ignoring case", () => {
+  const rows = buildBreadcrumbRows(
+    [
+      crumb({ category: "navigation", message: "/cart" }),
+      crumb({ category: "http", message: "POST /api/Quote" }),
+      crumb({ category: "ui.click", level: "warning", message: "button" })
+    ],
+    CLOSING_EVENT
+  );
+
+  assert.deepEqual(filterBreadcrumbRows(rows, "quote").map((row) => row.message), ["POST /api/Quote"]);
+  assert.deepEqual(filterBreadcrumbRows(rows, "NAVIGATION").map((row) => row.message), ["/cart"]);
+  assert.deepEqual(filterBreadcrumbRows(rows, "warning").map((row) => row.message), ["button"]);
+});
+
+test("a blank filter keeps every row", () => {
+  const rows = buildBreadcrumbRows([crumb({ message: "a" })], CLOSING_EVENT);
+
+  assert.equal(filterBreadcrumbRows(rows, "   "), rows);
 });

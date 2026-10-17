@@ -4,7 +4,7 @@
  *
  * Jump-to-section anchors have to clear that header or the card they land on
  * sits partly underneath it. The header carries a breadcrumb row, a title,
- * an optional message line, a culprit, a stats row and an action bar, so its
+ * an optional message line, a culprit, a meta line and an action bar, so its
  * height depends on the issue and on the viewport width — no fixed
  * `scroll-mt-*` value is correct for every render. Measuring it and letting
  * the sections read the measurement keeps the two in step without either

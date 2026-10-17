@@ -2,7 +2,7 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import type { IssueSummary } from "@/api";
+import type { IssueSummary, Regression } from "@/api";
 
 import { IssueHeader } from "./IssueHeader";
 import { STICKY_HEADER_HEIGHT_PROPERTY } from "./stickyHeader";
@@ -25,10 +25,10 @@ function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
   };
 }
 
-function renderHeader(issue: IssueSummary, latestMessage: string | null) {
+function renderHeader(issue: IssueSummary, latestMessage: string | null, regression: Regression | null = null) {
   return render(
     <MemoryRouter>
-      <IssueHeader issue={issue} slug="acme" latestMessage={latestMessage} actions={null} />
+      <IssueHeader issue={issue} slug="acme" latestMessage={latestMessage} regression={regression} actions={null} />
     </MemoryRouter>
   );
 }
@@ -49,6 +49,36 @@ describe("IssueHeader", () => {
     expect(within(trail).queryByRole("link", { name: "#42" })).toBeNull();
     const current = within(trail).getByText("#42");
     expect(current.getAttribute("aria-current")).toBe("page");
+  });
+
+  it("shows the lifetime event and user counts as labelled figures", () => {
+    renderHeader(buildIssue({ times_seen: 1284, users_seen: 312 }), null);
+
+    const counts = Object.fromEntries(
+      [...document.querySelectorAll("header dl > div")].map((stat) => [
+        stat.querySelector("dt")?.textContent,
+        stat.querySelector("dd")?.textContent
+      ])
+    );
+    expect(counts).toEqual({ Events: (1284).toLocaleString(), Users: "312" });
+  });
+
+  it("says the issue came back, and in which release", () => {
+    renderHeader(buildIssue(), null, { at: "2026-09-09T00:00:00Z", release: "shop@2.4.1" });
+
+    expect(screen.getByText("Regressed in shop@2.4.1")).toBeDefined();
+  });
+
+  it("says the issue came back even when the event named no release", () => {
+    renderHeader(buildIssue(), null, { at: "2026-09-09T00:00:00Z", release: null });
+
+    expect(screen.getByText("Regressed")).toBeDefined();
+  });
+
+  it("shows no regression mark on an issue that has not come back", () => {
+    renderHeader(buildIssue(), null);
+
+    expect(screen.queryByText(/Regressed/)).toBeNull();
   });
 
   it("renders the message line when it differs from the title", () => {

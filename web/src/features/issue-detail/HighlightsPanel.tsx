@@ -1,4 +1,3 @@
-import { DetailSection } from "./DetailSection";
 import type { Highlight } from "./highlights";
 
 interface HighlightsPanelProps {
@@ -6,23 +5,27 @@ interface HighlightsPanelProps {
   highlights: readonly Highlight[];
 }
 
-/** The handful of facts most useful for triage, first on the panel stack — never an empty card. */
+/**
+ * One line of who and where, directly above the trace. A strip rather than a
+ * card: it is context for reading the trace, not a destination of its own, so
+ * it takes no jump-nav entry and no room the trace could use.
+ */
 export function HighlightsPanel({ highlights }: HighlightsPanelProps) {
   if (highlights.length === 0) {
     return null;
   }
   return (
-    <DetailSection id="section-highlights" title="Highlights">
-      <dl className="grid grid-cols-2 gap-x-4 gap-y-2 text-sm sm:grid-cols-4">
-        {highlights.map((highlight) => (
-          <div key={highlight.label} className="min-w-0">
-            <dt className="text-muted-foreground text-xs">{highlight.label}</dt>
-            <dd className="line-clamp-3 font-mono text-xs break-words" title={highlight.value}>
-              {highlight.value}
-            </dd>
-          </div>
-        ))}
+    <section aria-label="Highlights">
+      <dl className="flex flex-wrap gap-x-5 gap-y-1 px-1 text-xs">
+      {highlights.map((highlight) => (
+        <div key={highlight.label} className="flex min-w-0 items-baseline gap-1.5">
+          <dt className="text-muted-foreground shrink-0">{highlight.label}</dt>
+          <dd className="max-w-xs truncate font-mono" title={highlight.value}>
+            {highlight.value}
+          </dd>
+        </div>
+      ))}
       </dl>
-    </DetailSection>
+    </section>
   );
 }

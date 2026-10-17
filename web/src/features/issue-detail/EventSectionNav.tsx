@@ -7,8 +7,8 @@ interface EventSectionNavProps {
 /**
  * Links only to sections actually present on this event — no dead anchors.
  *
- * No too-few-sections guard: `buildEventSections` always emits breadcrumbs,
- * stack trace and raw payload, so the shortest nav this can be handed is
+ * No too-few-sections guard: `buildEventSections` always emits stack trace,
+ * breadcrumbs and raw payload, so the shortest nav this can be handed is
  * three entries. That floor is pinned in `eventSections.test.ts`, where it
  * can actually fail.
  */

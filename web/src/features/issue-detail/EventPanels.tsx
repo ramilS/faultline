@@ -72,7 +72,7 @@ interface EventPanelStackProps {
  * The panel stack for one loaded event.
  *
  * Split from the resource above so the payload is parsed where the event is
- * known to exist: the nav, the Highlights card and the context panels all
+ * known to exist: the nav, the highlights strip and the context panels all
  * read the same untrusted maps, and every reader enumerates before it caps,
  * so parsing per consumer re-walks an attacker-sized `tags`/`extra` map once
  * per consumer, on every render. One memoized parse feeds all three.
@@ -86,8 +86,6 @@ function EventPanelStack({ event }: EventPanelStackProps) {
 
       <HighlightsPanel highlights={parsed.highlights} />
 
-      <Breadcrumbs event={event} />
-
       {event.symbolicated_exception === null ? (
         <DetailSection id="section-stack-trace" title="Stack trace">
           <EmptyState
@@ -100,6 +98,8 @@ function EventPanelStack({ event }: EventPanelStackProps) {
       ) : (
         <StackTrace exception={event.symbolicated_exception} />
       )}
+
+      <Breadcrumbs event={event} />
 
       <EventContextPanels fields={parsed.fields} />
 

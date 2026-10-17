@@ -1,5 +1,5 @@
 import { ChevronLeft, ChevronRight, Inbox } from "lucide-react";
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Link, useSearchParams } from "react-router-dom";
 import { toast } from "sonner";
 
@@ -7,20 +7,20 @@ import type { EventOrder, EventSummary } from "@/api";
 import { api } from "@/apiClient";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
-import { LevelBadge } from "@/components/LevelBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { messageFor } from "@/errors";
 import type { TimeRangeValue } from "@/features/issues/TimeRangePicker";
+import { cn } from "@/lib/utils";
 
 import { CopyButton } from "./CopyButton";
-import { DetailSection } from "./DetailSection";
 import {
   appendPage,
   beginNewestWalk,
   beginOldestWalk,
   canSelectFurther,
+  holdsEvent,
   canSelectNearer,
   needsFurtherPage,
   pagerFrom,
@@ -34,6 +34,9 @@ import {
 } from "./eventPager";
 import { eventScopeFilters, paramsWithEventScope, type EventScope } from "./eventScope";
 import { paramsWithSelectedEvent } from "./selectedEvent";
+
+/** How many pages the first load walks looking for a linked event before giving up on it. */
+const MAX_LANDING_PAGES = 10;
 
 /** The active filters as the scope both this pager and the all-events page understand. */
 function activeScope(environment: string, timeRange: TimeRangeValue): EventScope {
@@ -113,11 +116,26 @@ export function EventNavigator({ issueId, initialEventId, onSelect, environment,
     void (async () => {
       try {
         const page = await api.listIssueEvents(issueId, eventScopeFilters(scope));
-        if (active) {
-          const loaded = pagerFrom(page.events, page.next_cursor);
-          const landing = landingEventId.current;
-          setState({ status: "ready", pager: landing === null ? loaded : selectEventId(loaded, landing) });
+        let loaded = pagerFrom(page.events, page.next_cursor);
+        const landing = landingEventId.current;
+        // A link from an alert names an event that may be several pages
+        // behind the newest by the time it is opened, so the walk pages on
+        // toward it — boundedly, since a flood can bury it arbitrarily deep.
+        const stillLooking = () => landing !== null && !holdsEvent(loaded, landing) && loaded.nextCursor !== null;
+        for (let pages = 1; stillLooking() && pages < MAX_LANDING_PAGES; pages++) {
+          const next = await api.listIssueEvents(issueId, { cursor: loaded.nextCursor ?? undefined, ...eventScopeFilters(scope) });
+          if (!active) {
+            return;
+          }
+          loaded = appendPage(loaded, next.events, next.next_cursor);
         }
+        if (!active) {
+          return;
+        }
+        if (landing !== null && !holdsEvent(loaded, landing)) {
+          toast.info("The linked event isn't in this list any more, so this shows the latest one instead.");
+        }
+        setState({ status: "ready", pager: landing === null ? loaded : selectEventId(loaded, landing) });
       } catch (caught) {
         if (active) {
           setState({ status: "failed", message: messageFor(caught) });
@@ -214,17 +232,36 @@ export function EventNavigator({ issueId, initialEventId, onSelect, environment,
   );
 
   return (
-    <DetailSection
-      title="Events"
-      action={
-        state.status === "ready" && state.pager.events.length > 0 ? (
-          <div className="flex items-center gap-3">
-            <Controls
+    <section aria-label="Event" className="bg-card rounded-xl border px-3 py-2">
+      {state.status === "loading" && <Skeleton className="h-8 w-full" />}
+
+      {state.status === "failed" && (
+        <ErrorState
+          className="py-6"
+          message={state.message}
+          onRetry={() => setAttempt((current) => current + 1)}
+        />
+      )}
+
+      {state.status === "ready" && selected === null && (
+        <EmptyState
+          className="py-6"
+          icon={Inbox}
+          title="No events"
+          description="This issue has no stored events. They may have aged out of retention."
+        />
+      )}
+
+      {state.status === "ready" && selected !== null && (
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+          <AnchorTabs pager={state.pager} fetching={fetching} onAnchor={(order) => void goAnchor(order)} />
+          <EventMeta event={selected} position={state.pager.selectedIndex > 0 ? positionLabel(state.pager) : null} />
+          <div className="ml-auto flex items-center gap-1">
+            <StepButtons
               pager={state.pager}
               fetching={fetching}
               onNearer={() => commitSelection(selectNearer(state.pager))}
               onFurther={() => void goFurther()}
-              onAnchor={(order) => void goAnchor(order)}
             />
             {/* Resolved against this route (`/:slug/issues/:issueId`), so it
                 lands on the child `events` route. Never `../events`: with
@@ -235,48 +272,108 @@ export function EventNavigator({ issueId, initialEventId, onSelect, environment,
                 The active scope rides along in the query string so the full
                 list is never quietly wider than the pager it was opened
                 from. */}
-            <Link to={allEventsPath(scope)} className="text-muted-foreground hover:text-foreground text-xs">
+            <Link to={allEventsPath(scope)} className="text-muted-foreground hover:text-foreground ml-2 text-xs">
               View all
             </Link>
           </div>
-        ) : undefined
-      }
-    >
-      {state.status === "loading" && <Skeleton className="h-20 w-full" />}
-
-      {state.status === "failed" && (
-        <ErrorState
-          className="py-8"
-          message={state.message}
-          onRetry={() => setAttempt((current) => current + 1)}
-        />
+        </div>
       )}
-
-      {state.status === "ready" && selected === null && (
-        <EmptyState
-          className="py-8"
-          icon={Inbox}
-          title="No events"
-          description="This issue has no stored events. They may have aged out of retention."
-        />
-      )}
-
-      {state.status === "ready" && selected !== null && (
-        <EventSummaryCard event={selected} position={positionLabel(state.pager)} />
-      )}
-    </DetailSection>
+    </section>
   );
 }
 
-interface ControlsProps {
+const ANCHORS: ReadonlyArray<{ order: EventOrder; label: string }> = [
+  { order: "newest", label: "Latest" },
+  { order: "oldest", label: "Oldest" }
+];
+
+interface AnchorTabsProps {
+  pager: EventPager;
+  fetching: boolean;
+  onAnchor: (order: EventOrder) => void;
+}
+
+/**
+ * Which end of the stream the walk is standing on. A tab reads as pressed only
+ * while the selection is that end's own anchor event: three steps into the
+ * newest-first walk the reader is no longer looking at the latest event, and a
+ * pressed "Latest" would say they were.
+ */
+function AnchorTabs({ pager, fetching, onAnchor }: AnchorTabsProps) {
+  const atAnchor = !canSelectNearer(pager);
+
+  return (
+    <div role="group" aria-label="Jump to event" className="bg-muted/40 flex rounded-md p-0.5">
+      {ANCHORS.map((anchor) => {
+        const pressed = atAnchor && pager.order === anchor.order;
+        return (
+          <button
+            key={anchor.order}
+            type="button"
+            aria-pressed={pressed}
+            disabled={fetching}
+            onClick={() => onAnchor(anchor.order)}
+            className={cn(
+              "rounded-sm px-2.5 py-1 text-xs transition-colors disabled:opacity-50",
+              pressed ? "bg-background text-foreground font-medium shadow-xs" : "text-muted-foreground hover:text-foreground"
+            )}
+          >
+            {anchor.label}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+/**
+ * The selected event in one line. Its message is left to the issue header,
+ * which already shows it whenever it differs from the title.
+ */
+function EventMeta({ event, position }: { event: EventSummary; position: string | null }) {
+  return (
+    <dl className="text-muted-foreground flex min-w-0 flex-wrap items-center gap-x-3 gap-y-1 text-xs">
+      {position !== null && (
+        <div>
+          <dt className="sr-only">Position</dt>
+          <dd className="text-foreground font-medium">{position}</dd>
+        </div>
+      )}
+      <div className="flex items-center gap-1">
+        <dt className="sr-only">Event ID</dt>
+        <dd className="font-mono">{event.event_id}</dd>
+        <CopyButton value={event.event_id} label="Event ID" />
+      </div>
+      <div title={`Received ${event.received_at}`}>
+        <dt className="sr-only">Occurred</dt>
+        <dd>
+          <RelativeTime iso={event.timestamp} />
+        </dd>
+      </div>
+      {event.environment !== "" && (
+        <div>
+          <dt className="sr-only">Environment</dt>
+          <dd className="font-mono">{event.environment}</dd>
+        </div>
+      )}
+      {event.release !== null && (
+        <div>
+          <dt className="sr-only">Release</dt>
+          <dd className="font-mono">{event.release}</dd>
+        </div>
+      )}
+    </dl>
+  );
+}
+
+interface StepButtonsProps {
   pager: EventPager;
   fetching: boolean;
   onNearer: () => void;
   onFurther: () => void;
-  onAnchor: (order: EventOrder) => void;
 }
 
-function Controls({ pager, fetching, onNearer, onFurther, onAnchor }: ControlsProps) {
+function StepButtons({ pager, fetching, onNearer, onFurther }: StepButtonsProps) {
   // The chevrons follow the walk, not the clock, so their labels have to name
   // the direction the current order actually moves in.
   const walkingOldest = pager.order === "oldest";
@@ -284,23 +381,7 @@ function Controls({ pager, fetching, onNearer, onFurther, onAnchor }: ControlsPr
   const furtherLabel = walkingOldest ? "Newer event" : "Older event";
 
   return (
-    <div className="flex items-center gap-1">
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={() => onAnchor("newest")}
-        disabled={fetching || (!walkingOldest && !canSelectNearer(pager))}
-      >
-        Latest
-      </Button>
-      <Button
-        variant="ghost"
-        size="xs"
-        onClick={() => onAnchor("oldest")}
-        disabled={fetching || (walkingOldest && !canSelectNearer(pager))}
-      >
-        Oldest
-      </Button>
+    <>
       <Button
         variant="outline"
         size="icon-sm"
@@ -319,50 +400,6 @@ function Controls({ pager, fetching, onNearer, onFurther, onAnchor }: ControlsPr
       >
         <ChevronRight aria-hidden="true" />
       </Button>
-    </div>
-  );
-}
-
-function EventSummaryCard({ event, position }: { event: EventSummary; position: string }) {
-  return (
-    <dl className="grid grid-cols-2 gap-x-6 gap-y-2 text-sm">
-      <Field label={position} className="col-span-2">
-        <span className="flex items-center gap-1">
-          <span className="font-mono text-xs break-all">{event.event_id}</span>
-          <CopyButton value={event.event_id} label="Event ID" />
-        </span>
-      </Field>
-      <Field label="Level">
-        <LevelBadge level={event.level} />
-      </Field>
-      <Field label="Occurred">
-        <RelativeTime iso={event.timestamp} />
-      </Field>
-      <Field label="Received">
-        <RelativeTime iso={event.received_at} />
-      </Field>
-      <Field label="Environment">
-        <span className="font-mono text-xs break-all">{event.environment === "" ? "—" : event.environment}</span>
-      </Field>
-      <Field label="Release">
-        <span className="font-mono text-xs break-all">{event.release ?? "—"}</span>
-      </Field>
-      {/* Exception events usually carry no message of their own — the exception
-          is the message — so the field is left out rather than shown empty. */}
-      {event.message.trim() !== "" && (
-        <Field label="Message" className="col-span-2">
-          <span className="break-words">{event.message}</span>
-        </Field>
-      )}
-    </dl>
-  );
-}
-
-function Field({ label, children, className }: { label: string; children: ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <dt className="text-muted-foreground text-xs font-medium tracking-wide uppercase">{label}</dt>
-      <dd className="mt-0.5">{children}</dd>
-    </div>
+    </>
   );
 }

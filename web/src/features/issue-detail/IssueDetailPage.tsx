@@ -12,6 +12,7 @@ import { ALL_TIME_WINDOW } from "@/lib/issueFilters";
 import { EventFilterBar } from "./EventFilterBar";
 import { EventNavigator } from "./EventNavigator";
 import { EventPanels } from "./EventPanels";
+import { eventScopeFromParams, paramsWithEnvironment } from "./eventScope";
 import { resolveTimeRange } from "./eventWindow";
 import { GroupingInfoPanel } from "./GroupingInfoPanel";
 import { IssueActions } from "./IssueActions";
@@ -47,10 +48,12 @@ interface IssueDetailProps {
 
 function IssueDetail({ slug, issueId }: IssueDetailProps) {
   const navigate = useNavigate();
-  const [searchParams] = useSearchParams();
+  const [searchParams, setSearchParams] = useSearchParams();
   const initialEventId = selectedEventFromParams(searchParams);
   const [selectedEvent, setSelectedEvent] = useState<EventSummary | null>(null);
-  const [environment, setEnvironment] = useState("");
+  // Seeded from the URL so a notification's link opens under the environment
+  // it was sent for, and written back so a reload keeps the reader's choice.
+  const [environment, setEnvironment] = useState(() => eventScopeFromParams(searchParams).environment);
   // What the picker displays — a relative choice stays relative here, so its
   // label keeps reading "Last 24 hours" rather than the dates it resolves to.
   const [timeRange, setTimeRange] = useState<TimeRangeValue>(ALL_TIME_WINDOW);
@@ -58,6 +61,14 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
   // at the moment it was picked. See eventWindow.ts's resolveTimeRange for
   // why the pager must not re-resolve a relative period on its own.
   const [eventWindow, setEventWindow] = useState<TimeRangeValue>(ALL_TIME_WINDOW);
+
+  const handleEnvironmentChange = useCallback(
+    (next: string) => {
+      setEnvironment(next);
+      setSearchParams((current) => paramsWithEnvironment(current, next), { replace: true });
+    },
+    [setSearchParams]
+  );
 
   const handleTimeRangeChange = useCallback((next: TimeRangeValue) => {
     setTimeRange(next);
@@ -95,6 +106,7 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
         issue={result.issue}
         slug={slug}
         latestMessage={selectedEvent?.message ?? null}
+        regression={result.regression}
         actions={
           <IssueActions
             issue={result.issue}
@@ -110,7 +122,7 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
           <EventFilterBar
             environments={result.environments}
             environment={environment}
-            onEnvironmentChange={setEnvironment}
+            onEnvironmentChange={handleEnvironmentChange}
             timeRange={timeRange}
             onTimeRangeChange={handleTimeRangeChange}
           />

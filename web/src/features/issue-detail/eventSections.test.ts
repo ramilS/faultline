@@ -2,7 +2,6 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { buildEventSections } from "./eventSections.ts";
-import { buildHighlights } from "./highlights.ts";
 import { readPayloadFields } from "./payloadReaders.ts";
 import type { EventDetail } from "../../api.ts";
 
@@ -24,7 +23,7 @@ function baseEvent(overrides: Partial<EventDetail> = {}): EventDetail {
 
 function ids(event: EventDetail): readonly string[] {
   const fields = readPayloadFields(event.payload);
-  return buildEventSections(event, fields, buildHighlights(event, fields)).map((section) => section.id);
+  return buildEventSections(event, fields).map((section) => section.id);
 }
 
 const FULL_PAYLOAD = {
@@ -45,9 +44,8 @@ test("an event with everything present yields every section in DOM order", () =>
   });
 
   assert.deepEqual(ids(event), [
-    "section-highlights",
-    "section-breadcrumbs",
     "section-stack-trace",
+    "section-breadcrumbs",
     "section-user",
     "section-request",
     "section-tags",
@@ -69,7 +67,7 @@ test("an event with none of the optional payload sections yields only the uncond
     symbolicated_exception: null
   });
 
-  assert.deepEqual(ids(event), ["section-breadcrumbs", "section-stack-trace", "section-raw-payload"]);
+  assert.deepEqual(ids(event), ["section-stack-trace", "section-breadcrumbs", "section-raw-payload"]);
 });
 
 test("breadcrumbs and stack trace appear even when the event has no exception and no breadcrumbs", () => {
@@ -81,11 +79,6 @@ test("breadcrumbs and stack trace appear even when the event has no exception an
 
 test("raw payload appears unconditionally", () => {
   assert.ok(ids(baseEvent()).includes("section-raw-payload"));
-});
-
-test("highlights appears only when buildHighlights has content", () => {
-  assert.ok(!ids(baseEvent({ release: null, environment: "" })).includes("section-highlights"));
-  assert.ok(ids(baseEvent({ environment: "production" })).includes("section-highlights"));
 });
 
 test("user appears only when the payload carries a non-empty user", () => {

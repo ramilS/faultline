@@ -45,14 +45,14 @@ function buildEvent(overrides: Partial<EventSummary> = {}): EventSummary {
  * all" link is resolved relative to that route, so a bare `<MemoryRouter>`
  * would resolve it against "/" and could not catch a wrong target.
  */
-function renderNavigator(environment: string, timeRange: TimeRangeValue) {
+function renderNavigator(environment: string, timeRange: TimeRangeValue, initialEventId: string | null = null) {
   return render(
     <MemoryRouter initialEntries={["/acme/issues/42"]}>
       <Routes>
         <Route
           path="/:slug/issues/:issueId"
           element={
-            <EventNavigator issueId={42} initialEventId={null} onSelect={() => {}} environment={environment} timeRange={timeRange} />
+            <EventNavigator issueId={42} initialEventId={initialEventId} onSelect={() => {}} environment={environment} timeRange={timeRange} />
           }
         />
       </Routes>
@@ -175,36 +175,75 @@ describe("EventNavigator filter forwarding", () => {
   });
 });
 
-describe("EventNavigator event summary", () => {
+describe("EventNavigator event bar", () => {
   beforeEach(() => {
     listIssueEvents.mockReset();
   });
 
-  it("shows the message the event carried", async () => {
+  it("names the selected event's environment and release on one line", async () => {
+    listIssueEvents.mockResolvedValue({ events: [buildEvent({ release: "shop@2.4.1" })], next_cursor: null });
+
+    renderNavigator("", { statsPeriod: "", start: "", end: "" });
+    await screen.findByText("evt-1");
+
+    expect(screen.getByText("production")).toBeDefined();
+    expect(screen.getByText("shop@2.4.1")).toBeDefined();
+  });
+
+  it("leaves the message to the issue header rather than repeating it", async () => {
     listIssueEvents.mockResolvedValue({ events: [buildEvent({ message: "card declined by issuer" })], next_cursor: null });
 
     renderNavigator("", { statsPeriod: "", start: "", end: "" });
+    await screen.findByText("evt-1");
 
-    expect(await screen.findByText("card declined by issuer")).toBeDefined();
-    expect(screen.getByText("Message")).toBeDefined();
+    expect(screen.queryByText("card declined by issuer")).toBeNull();
   });
 
-  it("leaves out the Message field for an exception event that carries no message, rather than a label over nothing", async () => {
-    listIssueEvents.mockResolvedValue({ events: [buildEvent({ message: "" })], next_cursor: null });
+  it("presses Latest only while the latest event is the one shown", async () => {
+    listIssueEvents.mockResolvedValue({
+      events: [buildEvent({ event_id: "evt-1" }), buildEvent({ event_id: "evt-2" })],
+      next_cursor: null
+    });
 
     renderNavigator("", { statsPeriod: "", start: "", end: "" });
     await screen.findByText("evt-1");
+    expect(screen.getByRole("button", { name: "Latest" }).getAttribute("aria-pressed")).toBe("true");
 
-    expect(screen.queryByText("Message")).toBeNull();
-  });
+    fireEvent.click(screen.getByRole("button", { name: "Older event" }));
+    await screen.findByText("evt-2");
 
-  it("leaves out the Message field when the message is only whitespace", async () => {
-    listIssueEvents.mockResolvedValue({ events: [buildEvent({ message: "   " })], next_cursor: null });
-
-    renderNavigator("", { statsPeriod: "", start: "", end: "" });
-    await screen.findByText("evt-1");
-
-    expect(screen.queryByText("Message")).toBeNull();
+    expect(screen.getByRole("button", { name: "Latest" }).getAttribute("aria-pressed")).toBe("false");
+    expect(screen.getByText("2nd newest")).toBeDefined();
   });
 });
 
+describe("EventNavigator linked event", () => {
+  const UNSCOPED: TimeRangeValue = { statsPeriod: "", start: "", end: "" };
+
+  beforeEach(() => {
+    listIssueEvents.mockReset();
+  });
+
+  it("pages on to an alert's event that newer events have pushed off the first page", async () => {
+    listIssueEvents.mockResolvedValueOnce({ events: [buildEvent({ event_id: "evt-newest" })], next_cursor: "cursor-1" });
+    listIssueEvents.mockResolvedValueOnce({ events: [buildEvent({ event_id: "evt-alert" })], next_cursor: "cursor-2" });
+
+    renderNavigator("production", UNSCOPED, "evt-alert");
+
+    expect(await screen.findByText("evt-alert")).toBeDefined();
+    expect(listIssueEvents).toHaveBeenCalledTimes(2);
+    expect(listIssueEvents).toHaveBeenNthCalledWith(2, 42, { cursor: "cursor-1", environment: "production" });
+  });
+
+  it("stops paging after a bounded number of pages and shows the latest event", async () => {
+    listIssueEvents.mockImplementation(async (_id, options) => ({
+      events: [buildEvent({ event_id: options?.cursor ? `evt-${options.cursor}` : "evt-newest" })],
+      next_cursor: `c${listIssueEvents.mock.calls.length}`
+    }));
+
+    renderNavigator("", UNSCOPED, "evt-gone");
+
+    expect(await screen.findByText("evt-newest")).toBeDefined();
+    expect(listIssueEvents).toHaveBeenCalledTimes(10);
+  });
+});

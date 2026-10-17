@@ -133,6 +133,15 @@ export interface IssueDetail {
   environments: string[];
   releases: string[];
   tags: TagFacet[];
+  /** Set while the issue is open because a resolved issue came back; null otherwise. */
+  regression: Regression | null;
+}
+
+export interface Regression {
+  /** RFC3339 timestamp of the event that brought the issue back. */
+  at: string;
+  /** That event's release, or null when it named none. */
+  release: string | null;
 }
 
 // AffectedUser is one row of the issue's users facet. `key` names which of

@@ -26,54 +26,16 @@ function highlightsFor(event: EventDetail) {
   return buildHighlights(event, readPayloadFields(event.payload));
 }
 
-test("buildHighlights includes environment and release", () => {
-  const highlights = highlightsFor(baseEvent());
-  assert.deepEqual(
-    highlights.filter((h) => h.label === "Environment" || h.label === "Release"),
-    [
-      { label: "Environment", value: "production" },
-      { label: "Release", value: "1.2.3" }
-    ]
-  );
-});
-
-test("buildHighlights includes the exception type when symbolicated", () => {
-  const highlights = highlightsFor(
-    baseEvent({ symbolicated_exception: { type: "TimeoutError", value: "upstream timed out", cause: null, frames: [] } })
-  );
-  assert.deepEqual(highlights.find((h) => h.label === "Exception"), {
-    label: "Exception",
-    value: "TimeoutError: upstream timed out"
-  });
-});
-
 test("buildHighlights includes the user identity when present and non-empty", () => {
   const highlights = highlightsFor(baseEvent({ payload: { user: { email: "a@example.com" } } }));
   assert.deepEqual(highlights.find((h) => h.label === "User"), { label: "User", value: "a@example.com" });
 });
 
-test("buildHighlights omits Release when the event has none", () => {
-  const highlights = highlightsFor(baseEvent({ release: null }));
-  assert.equal(highlights.some((h) => h.label === "Release"), false);
-});
-
-test("buildHighlights omits Environment when the event has none", () => {
-  const highlights = highlightsFor(baseEvent({ environment: "" }));
-  assert.equal(highlights.some((h) => h.label === "Environment"), false);
-});
-
-test("buildHighlights returns an empty array when the event has no exception, release, environment, or user", () => {
+test("buildHighlights repeats nothing the header or the event bar already shows", () => {
   const highlights = highlightsFor(
-    baseEvent({ symbolicated_exception: null, release: null, environment: "", payload: {} })
+    baseEvent({ symbolicated_exception: { type: "TimeoutError", value: "upstream timed out", cause: null, frames: [] } })
   );
-  assert.equal(highlights.length, 0);
-});
-
-test("buildHighlights omits Exception when the symbolicated exception has neither a type nor a value", () => {
-  const highlights = highlightsFor(
-    baseEvent({ symbolicated_exception: { type: "", value: "", cause: null, frames: [] } })
-  );
-  assert.equal(highlights.some((h) => h.label === "Exception"), false);
+  assert.deepEqual(highlights, []);
 });
 
 test("buildHighlights prefers the top-level transaction and server_name fields over same-named tags", () => {

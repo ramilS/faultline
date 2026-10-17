@@ -104,6 +104,11 @@ export function selectAnchor(pager: EventPager): EventPager {
   return pager.selectedIndex === 0 ? pager : { ...pager, selectedIndex: 0 };
 }
 
+/** Whether the walk has already loaded the event with `eventId`. */
+export function holdsEvent(pager: EventPager, eventId: string): boolean {
+  return pager.events.some((event) => event.event_id === eventId);
+}
+
 /** Selects the event with `eventId`, or leaves the walk alone if it is not loaded. */
 export function selectEventId(pager: EventPager, eventId: string): EventPager {
   const index = pager.events.findIndex((event) => event.event_id === eventId);

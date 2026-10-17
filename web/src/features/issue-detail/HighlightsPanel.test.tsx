@@ -23,39 +23,25 @@ function buildEvent(overrides: Partial<EventDetail> = {}): EventDetail {
   };
 }
 
-/** The panel renders what one parse of the event yields, as the page does. */
+/** The strip renders what one parse of the event yields, as the page does. */
 function renderPanelFor(event: EventDetail) {
   return render(<HighlightsPanel highlights={buildHighlights(event, readPayloadFields(event.payload))} />);
 }
 
 describe("HighlightsPanel", () => {
-  it("renders a Highlights card with the exception, environment, release, and user", () => {
+  it("names the user, transaction and server the event happened to", () => {
     renderPanelFor(
-      buildEvent({
-        symbolicated_exception: { type: "TimeoutError", value: "upstream timed out", cause: null, frames: [] },
-        payload: { user: { email: "a@example.com" } }
-      })
+      buildEvent({ payload: { user: { email: "a@example.com" }, transaction: "GET /orders", server_name: "web-1" } })
     );
 
-    expect(screen.getByText("Highlights")).toBeDefined();
-    expect(screen.getByText("TimeoutError: upstream timed out")).toBeDefined();
-    expect(screen.getByText("production")).toBeDefined();
-    expect(screen.getByText("1.2.3")).toBeDefined();
+    expect(screen.getByRole("region", { name: "Highlights" })).toBeDefined();
     expect(screen.getByText("a@example.com")).toBeDefined();
+    expect(screen.getByText("GET /orders")).toBeDefined();
+    expect(screen.getByText("web-1")).toBeDefined();
   });
 
-  it("still renders the environment when the event has no exception, release, or user", () => {
-    renderPanelFor(buildEvent({ release: null }));
-
-    expect(screen.getByText("Highlights")).toBeDefined();
-    expect(screen.getByText("production")).toBeDefined();
-    expect(screen.queryByText("Release")).toBeNull();
-  });
-
-  it("renders nothing when the event has no exception, release, environment, or user", () => {
-    const { container } = render(
-      <HighlightsPanel highlights={[]} />
-    );
+  it("renders nothing when the event names no user, transaction or server", () => {
+    const { container } = renderPanelFor(buildEvent());
 
     expect(container.firstChild).toBeNull();
   });

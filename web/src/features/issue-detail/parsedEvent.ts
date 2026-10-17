@@ -14,7 +14,7 @@ export interface ParsedEvent {
  * Reads one stored event into every view its panels need.
  *
  * The panel stack has three independent consumers of the same payload — the
- * jump nav, the Highlights card and the context panels. Called per consumer,
+ * jump nav, the highlights strip and the context panels. Called per consumer,
  * the readers re-enumerate an attacker-sized `tags`/`extra`/`contexts` map
  * once each; this composes them once so the caller can memoize a single
  * result per event.
@@ -22,5 +22,5 @@ export interface ParsedEvent {
 export function parseEvent(event: EventDetail): ParsedEvent {
   const fields = readPayloadFields(event.payload);
   const highlights = buildHighlights(event, fields);
-  return { fields, highlights, sections: buildEventSections(event, fields, highlights) };
+  return { fields, highlights, sections: buildEventSections(event, fields) };
 }

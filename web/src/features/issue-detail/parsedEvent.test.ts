@@ -32,18 +32,13 @@ test("the nav, the highlights and the panel fields all describe the same parse",
   assert.equal(parsed.fields.user?.email, "a@example.com");
   assert.ok(ids.includes("section-tags"), "a payload with tags must offer the Tags anchor");
   assert.ok(ids.includes("section-sdk"), "a payload with an sdk must offer the SDK anchor");
-  assert.ok(ids.includes("section-highlights"), "highlights were built, so the anchor must exist");
   assert.ok(parsed.highlights.some((highlight) => highlight.label === "Transaction"));
 });
 
-test("an event with no highlights offers no highlights anchor", () => {
-  const parsed = parseEvent({
-    ...baseEvent({}),
-    environment: "",
-    release: null
-  });
+test("highlights are a strip above the trace, never a jump-nav section", () => {
+  const parsed = parseEvent(baseEvent({ user: { email: "a@example.com" } }));
 
-  assert.deepEqual(parsed.highlights, []);
+  assert.ok(parsed.highlights.length > 0);
   assert.equal(
     parsed.sections.some((section) => section.id === "section-highlights"),
     false
@@ -57,6 +52,6 @@ test("a payload that is not an object parses to empty views rather than throwing
   assert.deepEqual(parsed.fields.tags, []);
   assert.deepEqual(
     parsed.sections.map((section) => section.id),
-    ["section-highlights", "section-breadcrumbs", "section-stack-trace", "section-raw-payload"]
+    ["section-stack-trace", "section-breadcrumbs", "section-raw-payload"]
   );
 });

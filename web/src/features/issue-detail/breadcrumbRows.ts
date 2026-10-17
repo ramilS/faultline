@@ -55,3 +55,52 @@ function toRow(
     data: crumb.data
   };
 }
+
+const SECOND = 1000;
+const MINUTE = 60 * SECOND;
+const HOUR = 60 * MINUTE;
+
+/**
+ * How long before the error a row happened, as "−2.1s" or "−3m 12s".
+ *
+ * Measured from the error rather than from now: "4 minutes ago" on every row
+ * of a trail that took two seconds says nothing, while the gap to the error is
+ * what tells a reader which step led into it. A row stamped after the event
+ * (clock skew between the SDK's breadcrumb and event stamps) reads with a
+ * plus rather than being clamped to zero. Null when either instant is unusable.
+ */
+export function offsetFromEvent(timestamp: string | null, eventTimestamp: string): string | null {
+  if (timestamp === null) {
+    return null;
+  }
+  const gap = Date.parse(eventTimestamp) - Date.parse(timestamp);
+  if (Number.isNaN(gap)) {
+    return null;
+  }
+  const size = Math.abs(gap);
+  if (size === 0) {
+    return "0s";
+  }
+  const sign = gap > 0 ? "−" : "+";
+  if (size < SECOND) {
+    return `${sign}${size}ms`;
+  }
+  if (size < MINUTE) {
+    return `${sign}${(size / SECOND).toFixed(1)}s`;
+  }
+  if (size < HOUR) {
+    return `${sign}${Math.floor(size / MINUTE)}m ${Math.floor((size % MINUTE) / SECOND)}s`;
+  }
+  return `${sign}${Math.floor(size / HOUR)}h ${Math.floor((size % HOUR) / MINUTE)}m`;
+}
+
+/** Rows whose category, level or message contains `query`, case-insensitively. A blank query keeps every row. */
+export function filterBreadcrumbRows(rows: readonly BreadcrumbRow[], query: string): readonly BreadcrumbRow[] {
+  const needle = query.trim().toLowerCase();
+  if (needle === "") {
+    return rows;
+  }
+  return rows.filter((row) =>
+    [row.category, row.level, row.message].some((field) => field.toLowerCase().includes(needle))
+  );
+}

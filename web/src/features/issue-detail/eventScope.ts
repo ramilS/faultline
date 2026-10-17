@@ -94,3 +94,14 @@ export function describeEventScope(scope: EventScope, formatInstant: (iso: strin
   }
   return clauses.length === 0 ? null : `Only events ${clauses.join(" ")}.`;
 }
+
+/** Returns the params with only the environment written, or removed when "" — the other scope fields untouched. */
+export function paramsWithEnvironment(params: URLSearchParams, environment: string): URLSearchParams {
+  const next = new URLSearchParams(params);
+  if (environment === "") {
+    next.delete(ENVIRONMENT_PARAM);
+  } else {
+    next.set(ENVIRONMENT_PARAM, environment);
+  }
+  return next;
+}

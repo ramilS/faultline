@@ -1,4 +1,4 @@
-import { render, screen } from "@testing-library/react";
+import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import type { SymbolicatedFrame } from "@/api";
@@ -14,9 +14,43 @@ function frameIn(filename: string, contextLines: string[]): SymbolicatedFrame {
   } as unknown as SymbolicatedFrame;
 }
 
+describe("Frame collapsing", () => {
+  it("shows only the summary line while collapsed, and opens onto the source when clicked", () => {
+    let expanded = false;
+    const frame = frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"]);
+    const { container, rerender } = render(
+      <ul>
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+      </ul>
+    );
+
+    expect(container.querySelector("pre")).toBeNull();
+    const toggle = screen.getByRole("button", { expanded: false });
+    fireEvent.click(toggle);
+    expect(expanded).toBe(true);
+
+    rerender(
+      <ul>
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+      </ul>
+    );
+    expect(container.querySelector("pre")?.textContent).toContain("await run(a)");
+  });
+
+  it("offers nothing to open on a frame that carries no source", () => {
+    render(
+      <ul>
+        <Frame frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} />
+      </ul>
+    );
+
+    expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
 describe("Frame source context", () => {
   it("sets keywords, strings and comments apart by weight and tone in a JavaScript file", () => {
-    render(<ul><Frame frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
+    render(<ul><Frame expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
 
     expect(screen.getByText("return").className).toContain("font-semibold");
     expect(screen.getByText("// finished").className).toContain("italic");
@@ -25,7 +59,7 @@ describe("Frame source context", () => {
   it("shows every line's text exactly as sent, whatever the highlighting", () => {
     const { container } = render(
       <ul>
-        <Frame frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
+        <Frame expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
       </ul>
     );
 
@@ -34,7 +68,7 @@ describe("Frame source context", () => {
   });
 
   it("leaves a Java frame plain rather than colouring it by JavaScript's rules", () => {
-    render(<ul><Frame frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
+    render(<ul><Frame expanded onToggle={() => {}} frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
 
     expect(screen.getByText("return value; // finished").className).not.toContain("italic");
   });
@@ -42,7 +76,7 @@ describe("Frame source context", () => {
   it("keeps markup in source as text", () => {
     const { container } = render(
       <ul>
-        <Frame frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
+        <Frame expanded onToggle={() => {}} frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
       </ul>
     );
 
