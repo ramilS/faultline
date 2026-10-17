@@ -9,6 +9,10 @@ type IssueChange struct {
 	Trigger      Trigger
 	Level        string
 	Environments []string
+	// EventIDs names, per environment, the first event of the batch that
+	// landed on the issue there: the event a notification links to, so the
+	// reader opens on what was reported rather than on whatever came last.
+	EventIDs map[string]string
 }
 
 // ChannelFilter is the part of a channel that decides whether it receives a
@@ -27,6 +31,9 @@ type Delivery struct {
 	IssueID     int64
 	Trigger     Trigger
 	Environment string
+	// EventID is the event that caused the change in Environment, or "" when
+	// the change carried none.
+	EventID string
 }
 
 // Match pairs every change with every channel whose filters accept it.
@@ -47,7 +54,7 @@ func Match(channels []ChannelFilter, changes []IssueChange) []Delivery {
 			if !ok {
 				continue
 			}
-			deliveries = append(deliveries, Delivery{ChannelID: channel.ID, IssueID: change.IssueID, Trigger: change.Trigger, Environment: environment})
+			deliveries = append(deliveries, Delivery{ChannelID: channel.ID, IssueID: change.IssueID, Trigger: change.Trigger, Environment: environment, EventID: change.EventIDs[environment]})
 		}
 	}
 	return deliveries

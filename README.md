@@ -183,13 +183,17 @@ A webhook receives `POST` with a JSON body:
   "delivery_id": 42,
   "sent_at": "2026-10-15T09:30:00Z",
   "project": { "slug": "shop", "name": "Shop" },
-  "issue": { "id": 7, "title": "TypeError: x is undefined", "culprit": "app.js", "level": "error", "url": "https://faultline.example.com/shop/issues/7" },
-  "environment": "production"
+  "issue": { "id": 7, "title": "TypeError: x is undefined", "culprit": "app.js", "level": "error", "url": "https://faultline.example.com/shop/issues/7?environment=production&event=0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11" },
+  "environment": "production",
+  "event_id": "0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11"
 }
 ```
 
 `event` is `issue.new` or `issue.regression`, also sent as the
-`X-Faultline-Event` header; `issue.url` is `null` without a public URL. A retry
+`X-Faultline-Event` header; `issue.url` is `null` without a public URL.
+`event_id` is the event that created or reopened the issue, and `issue.url`
+opens the dashboard on that event under that environment; it is `null` for a
+delivery queued before the server recorded it. A retry
 repeats the same `X-Faultline-Delivery` id, so a receiver can drop duplicates.
 With a signing secret set, `X-Faultline-Timestamp` carries Unix seconds and
 `X-Faultline-Signature` is `sha256=` followed by the hex HMAC-SHA256, under the

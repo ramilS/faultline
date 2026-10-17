@@ -136,6 +136,16 @@ type Detail struct {
 	Environments []string
 	Releases     []string
 	Tags         []TagFacet
+	// Regression is set while the issue is open because a resolved issue
+	// came back, and nil otherwise.
+	Regression *Regression
+}
+
+// Regression is when a resolved issue last came back, and the release of the
+// event that brought it back, or "" when that event named none.
+type Regression struct {
+	At      time.Time
+	Release string
 }
 
 // UserIdentity is one distinct end-user identity attributed to an issue —

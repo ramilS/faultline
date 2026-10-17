@@ -125,7 +125,7 @@ func (w *Worker) RunOnce(ctx context.Context) (int, error) {
 
 func (w *Worker) deliver(ctx context.Context, delivery PendingDelivery) error {
 	notification := delivery.Notification
-	notification.IssueURL = IssueURL(w.publicURL, notification.ProjectSlug, notification.IssueID)
+	notification.IssueURL = IssueURL(w.publicURL, notification.ProjectSlug, notification.IssueID, notification.EventID, notification.Environment)
 	sendErr := w.transport.Send(ctx, delivery.Destination, notification, delivery.ID)
 	at := w.now()
 	if sendErr == nil {

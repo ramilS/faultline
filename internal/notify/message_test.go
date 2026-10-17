@@ -49,6 +49,7 @@ func TestWebhookBodyWireShape(t *testing.T) {
 	body, err := WebhookBody(Notification{
 		Trigger: TriggerRegression, ProjectSlug: "shop", ProjectName: "Shop", IssueID: 7,
 		Title: "boom", Culprit: "app.js", Level: "error", Environment: "production",
+		EventID:  "0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11",
 		IssueURL: "https://faultline.example/shop/issues/7",
 	}, 42, sentAt)
 	if err != nil {
@@ -58,7 +59,7 @@ func TestWebhookBodyWireShape(t *testing.T) {
 	want := `{"event":"issue.regression","delivery_id":42,"sent_at":"2026-10-15T06:30:00Z",` +
 		`"project":{"slug":"shop","name":"Shop"},` +
 		`"issue":{"id":7,"title":"boom","culprit":"app.js","level":"error","url":"https://faultline.example/shop/issues/7"},` +
-		`"environment":"production"}`
+		`"environment":"production","event_id":"0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11"}`
 	if string(body) != want {
 		t.Fatalf("body =\n%s\nwant\n%s", body, want)
 	}
@@ -69,23 +70,36 @@ func TestWebhookBodySendsANullURLWithoutAPublicURL(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(string(body), `"url":null`) {
-		t.Fatalf("body = %s, want issue.url null", body)
+	if !strings.Contains(string(body), `"url":null`) || !strings.Contains(string(body), `"event_id":null`) {
+		t.Fatalf("body = %s, want issue.url and event_id null", body)
 	}
 }
 
 func TestIssueURL(t *testing.T) {
+	const eventID = "0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11"
 	cases := map[string]struct {
-		publicURL, slug string
-		want            string
+		publicURL, slug, eventID, environment string
+		want                                  string
 	}{
-		"no public URL means no link":     {"", "shop", ""},
-		"a trailing slash is not doubled": {"https://faultline.example/", "shop", "https://faultline.example/shop/issues/7"},
-		"the slug is path-escaped":        {"https://faultline.example", "a/b", "https://faultline.example/a%2Fb/issues/7"},
+		"no public URL means no link":     {"", "shop", eventID, "production", ""},
+		"a trailing slash is not doubled": {"https://faultline.example/", "shop", "", "", "https://faultline.example/shop/issues/7"},
+		"the slug is path-escaped":        {"https://faultline.example", "a/b", "", "", "https://faultline.example/a%2Fb/issues/7"},
+		"the link opens on the event, under its environment": {
+			"https://faultline.example", "shop", eventID, "production",
+			"https://faultline.example/shop/issues/7?environment=production&event=" + eventID,
+		},
+		"an event without an environment links to the event alone": {
+			"https://faultline.example", "shop", eventID, "",
+			"https://faultline.example/shop/issues/7?event=" + eventID,
+		},
+		"the environment is query-escaped": {
+			"https://faultline.example", "shop", "", "a&b c",
+			"https://faultline.example/shop/issues/7?environment=a%26b+c",
+		},
 	}
 	for name, tc := range cases {
 		t.Run(name, func(t *testing.T) {
-			if got := IssueURL(tc.publicURL, tc.slug, 7); got != tc.want {
+			if got := IssueURL(tc.publicURL, tc.slug, 7, tc.eventID, tc.environment); got != tc.want {
 				t.Fatalf("IssueURL = %q, want %q", got, tc.want)
 			}
 		})

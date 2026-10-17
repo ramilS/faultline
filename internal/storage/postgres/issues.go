@@ -266,17 +266,21 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 		detail                      issue.Detail
 		assigneeID                  *int64
 		assigneeName, assigneeEmail *string
+		regressedAt                 *time.Time
+		regressedInRelease          *string
 	)
 	err := repository.pool.QueryRow(ctx, `
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
-		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id, p.slug
+		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id, p.slug,
+		       i.regressed_at, i.regressed_in_release
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE i.id = $1`+predicate, args...).Scan(&detail.Issue.ID, &detail.Issue.Fingerprint, &detail.Issue.Title,
 		&detail.Issue.Culprit, &detail.Issue.Level, &detail.Issue.Status,
 		&detail.Issue.TimesSeen, &detail.Issue.UsersSeen, &detail.Issue.FirstSeen, &detail.Issue.LastSeen,
-		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID, &detail.Issue.ProjectSlug)
+		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID, &detail.Issue.ProjectSlug,
+		&regressedAt, &regressedInRelease)
 	if err != nil {
 		return issue.Detail{}, translateIssueError("issue detail", err)
 	}
@@ -284,6 +288,9 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 	detail.Issue.LastSeen = detail.Issue.LastSeen.UTC()
 	if assigneeID != nil {
 		detail.Issue.Assignee = &issue.Assignee{ID: *assigneeID, Name: deref(assigneeName), Email: deref(assigneeEmail)}
+	}
+	if regressedAt != nil {
+		detail.Regression = &issue.Regression{At: regressedAt.UTC(), Release: deref(regressedInRelease)}
 	}
 	// A tombstoned issue has no future events, so its tag facets and
 	// sparklines carry nothing a caller reads; skip both queries for it.
@@ -361,7 +368,10 @@ func (repository *issueRepository) UpdateStatus(ctx context.Context, scope acces
 	args := append([]any{id, string(status)}, scopeArgs...)
 	var updated int64
 	err := repository.pool.QueryRow(ctx, `
-		UPDATE issues SET status = $2 WHERE id = $1`+predicate+` RETURNING id
+		UPDATE issues SET status = $2::issue_status,
+		       regressed_at         = CASE WHEN $2::issue_status = 'unresolved' THEN regressed_at END,
+		       regressed_in_release = CASE WHEN $2::issue_status = 'unresolved' THEN regressed_in_release END
+		WHERE id = $1`+predicate+` RETURNING id
 	`, args...).Scan(&updated)
 	if err != nil {
 		return translateIssueError("update issue status", err)

@@ -16,6 +16,8 @@ import (
 
 	"github.com/jackc/pgx/v5/pgxpool"
 
+	"github.com/ramilS/faultline/internal/access"
+	"github.com/ramilS/faultline/internal/issue"
 	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/project"
 	"github.com/ramilS/faultline/internal/storage"
@@ -66,7 +68,8 @@ func queuedDeliveries(t *testing.T, ctx context.Context, pool *pgxpool.Pool) []q
 	return deliveries
 }
 
-func persistEvent(t *testing.T, ctx context.Context, sink storage.EventSink, projectID int64, fingerprint, level, environment string, at time.Time) {
+// persistEvent stores one event and returns its id.
+func persistEvent(t *testing.T, ctx context.Context, sink storage.EventSink, projectID int64, fingerprint, level, environment string, at time.Time) string {
 	t.Helper()
 	event := newEventRow(projectID, fingerprint, at)
 	event.Environment = environment
@@ -78,6 +81,7 @@ func persistEvent(t *testing.T, ctx context.Context, sink storage.EventSink, pro
 	if err != nil {
 		t.Fatalf("persist batch: %v", err)
 	}
+	return event.EventID.String()
 }
 
 func issueIDFor(t *testing.T, ctx context.Context, pool *pgxpool.Pool, projectID int64, fingerprint string) int64 {
@@ -148,6 +152,21 @@ func TestPersistBatchQueuesNotificationsForNewAndRegressedIssues(t *testing.T) {
 	if status := queryIssue(t, ctx, pool, projectID, fingerprint).status; status != "unresolved" {
 		t.Fatalf("regressed issue status = %q, want unresolved", status)
 	}
+
+	repository := storagepostgres.NewIssueRepository(pool)
+	detail, err := repository.Detail(ctx, access.Unrestricted(), issueID)
+	if err != nil {
+		t.Fatalf("detail: %v", err)
+	}
+	if want := (&issue.Regression{At: base.Add(3 * time.Minute)}); detail.Regression == nil || *detail.Regression != *want {
+		t.Fatalf("regression = %+v, want %+v", detail.Regression, want)
+	}
+	if err := repository.UpdateStatus(ctx, access.Unrestricted(), issueID, issue.StatusResolved); err != nil {
+		t.Fatalf("resolve: %v", err)
+	}
+	if detail, err := repository.Detail(ctx, access.Unrestricted(), issueID); err != nil || detail.Regression != nil {
+		t.Fatalf("after resolving, regression = %+v (%v), want none", detail.Regression, err)
+	}
 }
 
 // A fingerprint merged away keeps landing on its merge target through the
@@ -184,7 +203,7 @@ func TestNotificationQueueLifecycle(t *testing.T) {
 	secret := "signing-key"
 	channel := createChannel(t, ctx, channels, projectID, notify.ChannelInput{Name: "hook", Kind: notify.KindWebhook, Target: "https://hooks.example/x", Secret: &secret, Enabled: true, NotifyNew: true})
 	base := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
-	persistEvent(t, ctx, sink, projectID, hex64("notify-queue"), "fatal", "production", base)
+	eventID := persistEvent(t, ctx, sink, projectID, hex64("notify-queue"), "fatal", "production", base)
 	if _, err := pool.Exec(ctx, `UPDATE projects SET icon_emoji = '🚀' WHERE id = $1`, projectID); err != nil {
 		t.Fatal(err)
 	}
@@ -195,7 +214,7 @@ func TestNotificationQueueLifecycle(t *testing.T) {
 		t.Fatalf("Claim = %+v, %v; want one delivery", claimed, err)
 	}
 	delivery := claimed[0]
-	wantNotification := notify.Notification{Trigger: notify.TriggerNew, ProjectSlug: "web", ProjectName: "Web", ProjectEmoji: "🚀", IssueID: delivery.Notification.IssueID, Title: "boom", Culprit: "app.js", Level: "fatal", Environment: "production"}
+	wantNotification := notify.Notification{Trigger: notify.TriggerNew, ProjectSlug: "web", ProjectName: "Web", ProjectEmoji: "🚀", IssueID: delivery.Notification.IssueID, Title: "boom", Culprit: "app.js", Level: "fatal", Environment: "production", EventID: eventID}
 	if delivery.Attempts != 1 || delivery.ChannelID != channel.ID || delivery.Notification != wantNotification ||
 		delivery.Destination != (notify.Destination{Kind: notify.KindWebhook, Target: "https://hooks.example/x", Secret: "signing-key"}) {
 		t.Fatalf("claimed %+v", delivery)
@@ -349,7 +368,7 @@ func TestNotificationsReachAWebhookEndToEnd(t *testing.T) {
 	worker := notify.NewWorker(storagepostgres.NewNotificationQueue(pool), loopbackSender(), notify.WorkerOptions{PublicURL: "https://faultline.example"})
 	fingerprint := hex64("notify-e2e")
 
-	persistEvent(t, ctx, storagepostgres.NewEventSink(pool), projectID, fingerprint, "error", "production", time.Now())
+	eventID := persistEvent(t, ctx, storagepostgres.NewEventSink(pool), projectID, fingerprint, "error", "production", time.Now())
 	if _, err := worker.RunOnce(ctx); err != nil {
 		t.Fatalf("RunOnce: %v", err)
 	}
@@ -358,10 +377,11 @@ func TestNotificationsReachAWebhookEndToEnd(t *testing.T) {
 		t.Fatalf("webhook received %d requests, want 1", len(receiver.requests))
 	}
 	payload := receiver.requests[0]
-	issue := payload["issue"].(map[string]any)
+	issueField := payload["issue"].(map[string]any)
 	issueID := issueIDFor(t, ctx, pool, projectID, fingerprint)
-	if payload["event"] != "issue.new" || payload["environment"] != "production" || issue["title"] != "boom" ||
-		issue["url"] != "https://faultline.example/web/issues/"+jsonNumber(issueID) {
+	if payload["event"] != "issue.new" || payload["environment"] != "production" || payload["event_id"] != eventID ||
+		issueField["title"] != "boom" ||
+		issueField["url"] != "https://faultline.example/web/issues/"+jsonNumber(issueID)+"?environment=production&event="+eventID {
 		t.Fatalf("payload = %v", payload)
 	}
 	if !strings.HasPrefix(receiver.headers[0].Get("X-Faultline-Signature"), "sha256=") {

@@ -12,6 +12,7 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ramilS/faultline/internal/ingest"
+	"github.com/ramilS/faultline/internal/issue"
 	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/storage"
 )
@@ -72,6 +73,9 @@ func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) er
 	if err := upsertUserIdentities(ctx, tx, batch, issueIDs); err != nil {
 		return err
 	}
+	if err := markRegressions(ctx, tx, batch, issueIDs, transitions); err != nil {
+		return err
+	}
 	if err := enqueueNotifications(ctx, tx, batch.ProjectID, issueChanges(batch, issueIDs, transitions)); err != nil {
 		return err
 	}
@@ -105,23 +109,82 @@ type issueTransition struct {
 }
 
 // issueChanges attaches to each transition the environments of the batch's
-// events that landed on that issue, for the channels' environment filter.
+// events that landed on that issue, for the channels' environment filter,
+// and the first such event in each environment, for the notification's link.
 func issueChanges(batch storage.Batch, issueIDs map[string]int64, transitions map[int64]issueTransition) []notify.IssueChange {
 	if len(transitions) == 0 {
 		return nil
 	}
 	environments := make(map[int64][]string, len(transitions))
+	eventIDs := make(map[int64]map[string]string, len(transitions))
 	for _, event := range batch.Events {
 		issueID := issueIDs[event.Fingerprint]
-		if _, ok := transitions[issueID]; ok && !slices.Contains(environments[issueID], event.Environment) {
-			environments[issueID] = append(environments[issueID], event.Environment)
+		if _, ok := transitions[issueID]; !ok || slices.Contains(environments[issueID], event.Environment) {
+			continue
 		}
+		environments[issueID] = append(environments[issueID], event.Environment)
+		if eventIDs[issueID] == nil {
+			eventIDs[issueID] = make(map[string]string)
+		}
+		eventIDs[issueID][event.Environment] = event.EventID.String()
 	}
 	changes := make([]notify.IssueChange, 0, len(transitions))
 	for issueID, transition := range transitions {
-		changes = append(changes, notify.IssueChange{IssueID: issueID, Trigger: transition.trigger, Level: transition.level, Environments: environments[issueID]})
+		changes = append(changes, notify.IssueChange{IssueID: issueID, Trigger: transition.trigger, Level: transition.level, Environments: environments[issueID], EventIDs: eventIDs[issueID]})
 	}
 	return changes
+}
+
+// markRegressions stamps each issue the batch reopened from resolved with the
+// time and release of the batch's first event that landed on it, so the issue
+// page can say when and in which release it came back.
+func markRegressions(ctx context.Context, tx pgx.Tx, batch storage.Batch, issueIDs map[string]int64, transitions map[int64]issueTransition) error {
+	marks := regressionMarks(batch, issueIDs, transitions)
+	if len(marks) == 0 {
+		return nil
+	}
+	ids := make([]int64, 0, len(marks))
+	at := make([]time.Time, 0, len(marks))
+	releases := make([]string, 0, len(marks))
+	for id, mark := range marks {
+		ids = append(ids, id)
+		at = append(at, mark.At)
+		releases = append(releases, mark.Release)
+	}
+	_, err := tx.Exec(ctx, `
+		UPDATE issues SET regressed_at = mark.at, regressed_in_release = NULLIF(mark.release, '')
+		FROM unnest($1::bigint[], $2::timestamptz[], $3::text[]) AS mark(id, at, release)
+		WHERE issues.id = mark.id
+	`, ids, at, releases)
+	if err != nil {
+		return fmt.Errorf("mark regressed issues: %w", err)
+	}
+	return nil
+}
+
+// regressionMarks picks, for every regression transition, the batch's first
+// event on that issue. The time is when the server received that event, not
+// the SDK's own timestamp: a device flushing an offline queue or running a
+// skewed clock would otherwise date the reopening days off, or in the future.
+// A regression with no event in the batch is skipped rather than stamped with
+// a made-up time.
+func regressionMarks(batch storage.Batch, issueIDs map[string]int64, transitions map[int64]issueTransition) map[int64]issue.Regression {
+	marks := make(map[int64]issue.Regression)
+	for _, event := range batch.Events {
+		id := issueIDs[event.Fingerprint]
+		if transitions[id].trigger != notify.TriggerRegression {
+			continue
+		}
+		if _, marked := marks[id]; marked {
+			continue
+		}
+		release := ""
+		if event.Release != nil {
+			release = *event.Release
+		}
+		marks[id] = issue.Regression{At: event.ReceivedAt, Release: release}
+	}
+	return marks
 }
 
 // upsertIssues resolves each batch fingerprint to an issue id, folding in

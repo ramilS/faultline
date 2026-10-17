@@ -102,10 +102,17 @@ type tagFacetResponse struct {
 }
 
 type issueDetailResponse struct {
-	Issue        issueResponse      `json:"issue"`
-	Environments []string           `json:"environments"`
-	Releases     []string           `json:"releases"`
-	Tags         []tagFacetResponse `json:"tags"`
+	Issue        issueResponse       `json:"issue"`
+	Environments []string            `json:"environments"`
+	Releases     []string            `json:"releases"`
+	Tags         []tagFacetResponse  `json:"tags"`
+	Regression   *regressionResponse `json:"regression"`
+}
+
+// regressionResponse is null on an issue that is not open because it came back.
+type regressionResponse struct {
+	At      string  `json:"at"`
+	Release *string `json:"release"`
 }
 
 func (h *IssueHandler) ListIssues(w http.ResponseWriter, r *http.Request) {
@@ -668,12 +675,19 @@ func toDetailResponse(source issue.Detail) issueDetailResponse {
 		}
 		tags = append(tags, tagFacetResponse{Key: facet.Key, Values: values})
 	}
-	return issueDetailResponse{
+	response := issueDetailResponse{
 		Issue:        toIssueResponse(source.Issue),
 		Environments: nonNilStrings(source.Environments),
 		Releases:     nonNilStrings(source.Releases),
 		Tags:         tags,
 	}
+	if source.Regression != nil {
+		response.Regression = &regressionResponse{At: source.Regression.At.Format(time.RFC3339)}
+		if source.Regression.Release != "" {
+			response.Regression.Release = &source.Regression.Release
+		}
+	}
+	return response
 }
 
 func nonNilStrings(values []string) []string {

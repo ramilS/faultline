@@ -19,11 +19,28 @@ const (
 
 // IssueURL links to the issue in the dashboard, or returns "" when the
 // instance has no public URL to build one from.
-func IssueURL(publicURL, projectSlug string, issueID int64) string {
+//
+// It names the event that caused the notification and the environment it was
+// reported for, so the page opens on that event under that environment rather
+// than on the newest event of any environment: a production alert that opens
+// on a staging event shows the reader a different failure from the one they
+// were told about. Either is left out when empty.
+func IssueURL(publicURL, projectSlug string, issueID int64, eventID, environment string) string {
 	if publicURL == "" {
 		return ""
 	}
-	return strings.TrimRight(publicURL, "/") + "/" + url.PathEscape(projectSlug) + "/issues/" + strconv.FormatInt(issueID, 10)
+	link := strings.TrimRight(publicURL, "/") + "/" + url.PathEscape(projectSlug) + "/issues/" + strconv.FormatInt(issueID, 10)
+	query := url.Values{}
+	if eventID != "" {
+		query.Set("event", eventID)
+	}
+	if environment != "" {
+		query.Set("environment", environment)
+	}
+	if len(query) == 0 {
+		return link
+	}
+	return link + "?" + query.Encode()
 }
 
 func headline(trigger Trigger) string {
@@ -71,6 +88,7 @@ type webhookPayload struct {
 	Project     webhookProject `json:"project"`
 	Issue       webhookIssue   `json:"issue"`
 	Environment string         `json:"environment"`
+	EventID     *string        `json:"event_id"`
 }
 
 type webhookProject struct {
@@ -104,6 +122,9 @@ func WebhookBody(n Notification, deliveryID int64, sentAt time.Time) ([]byte, er
 	}
 	if n.IssueURL != "" {
 		payload.Issue.URL = &n.IssueURL
+	}
+	if n.EventID != "" {
+		payload.EventID = &n.EventID
 	}
 	return json.Marshal(payload)
 }

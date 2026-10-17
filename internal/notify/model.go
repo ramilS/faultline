@@ -94,7 +94,10 @@ type Notification struct {
 	Culprit      string
 	Level        string
 	Environment  string
-	IssueURL     string
+	// EventID is the event that caused the notification, or "" for one
+	// queued before deliveries recorded it.
+	EventID  string
+	IssueURL string
 }
 
 // levelRanks orders the levels ingest accepts (see ingest.validLevel).

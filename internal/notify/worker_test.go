@@ -66,14 +66,14 @@ func runOnce(t *testing.T, delivery PendingDelivery, sendErr error) ([]queueCall
 }
 
 func TestWorkerCompletesADeliveredNotificationWithAnIssueLink(t *testing.T) {
-	delivery := PendingDelivery{ID: 5, Attempts: 1, Notification: Notification{ProjectSlug: "shop", IssueID: 7}}
+	delivery := PendingDelivery{ID: 5, Attempts: 1, Notification: Notification{ProjectSlug: "shop", IssueID: 7, EventID: "e1", Environment: "production"}}
 
 	calls, sent := runOnce(t, delivery, nil)
 
 	if len(calls) != 1 || calls[0].op != "complete" || calls[0].id != 5 {
 		t.Fatalf("queue calls = %+v, want one complete of 5", calls)
 	}
-	if sent[0].IssueURL != "https://faultline.example/shop/issues/7" {
+	if sent[0].IssueURL != "https://faultline.example/shop/issues/7?environment=production&event=e1" {
 		t.Fatalf("IssueURL = %q", sent[0].IssueURL)
 	}
 }

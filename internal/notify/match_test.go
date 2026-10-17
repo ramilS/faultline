@@ -7,7 +7,10 @@ import (
 
 func TestMatch(t *testing.T) {
 	everything := ChannelFilter{ID: 1, NotifyNew: true, NotifyRegression: true, MinLevel: "debug"}
-	newIssue := IssueChange{IssueID: 10, Trigger: TriggerNew, Level: "error", Environments: []string{"staging", "production"}}
+	newIssue := IssueChange{
+		IssueID: 10, Trigger: TriggerNew, Level: "error", Environments: []string{"staging", "production"},
+		EventIDs: map[string]string{"staging": "evt-staging", "production": "evt-production"},
+	}
 
 	cases := map[string]struct {
 		channel ChannelFilter
@@ -16,7 +19,7 @@ func TestMatch(t *testing.T) {
 	}{
 		"an unfiltered channel takes a new issue and reports its first environment": {
 			everything, newIssue,
-			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerNew, Environment: "production"}},
+			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerNew, Environment: "production", EventID: "evt-production"}},
 		},
 		"an unfiltered channel takes an issue whose events carried no environment": {
 			everything, IssueChange{IssueID: 10, Trigger: TriggerNew, Level: "error"},
@@ -50,7 +53,7 @@ func TestMatch(t *testing.T) {
 		},
 		"an environment filter reports the environment it matched": {
 			ChannelFilter{ID: 1, NotifyNew: true, MinLevel: "debug", Environments: []string{"staging"}}, newIssue,
-			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerNew, Environment: "staging"}},
+			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerNew, Environment: "staging", EventID: "evt-staging"}},
 		},
 		"an environment filter with no overlap skips the change": {
 			ChannelFilter{ID: 1, NotifyNew: true, MinLevel: "debug", Environments: []string{"development"}}, newIssue, nil,

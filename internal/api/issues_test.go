@@ -951,6 +951,36 @@ func TestIssueDetailReturnsIssue(t *testing.T) {
 	}
 }
 
+func TestIssueDetailRegressionWireShape(t *testing.T) {
+	at := time.Date(2026, 10, 15, 9, 30, 0, 0, time.UTC)
+	cases := map[string]struct {
+		regression *issue.Regression
+		want       string
+	}{
+		"an issue open because it came back":        {&issue.Regression{At: at, Release: "shop@2.4.1"}, `{"at":"2026-10-15T09:30:00Z","release":"shop@2.4.1"}`},
+		"a regression whose event named no release": {&issue.Regression{At: at}, `{"at":"2026-10-15T09:30:00Z","release":null}`},
+		"an issue that has not regressed":           {nil, `null`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &stubIssueService{detail: issue.Detail{Issue: issue.Issue{ID: 5, FirstSeen: at, LastSeen: at}, Regression: tc.regression}}
+			recorder := httptest.NewRecorder()
+			request := newIssueRequest(http.MethodGet, "/api/v1/issues/5", "")
+			request.SetPathValue("id", "5")
+
+			NewIssueHandler(service, Options{}).IssueDetail(recorder, request)
+
+			var body map[string]json.RawMessage
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode: %v (body %s)", err, recorder.Body.String())
+			}
+			if got := string(body["regression"]); got != tc.want {
+				t.Fatalf("regression = %s, want %s", got, tc.want)
+			}
+		})
+	}
+}
+
 func TestIssueDetailIncludesFingerprint(t *testing.T) {
 	// Arrange
 	now := time.Now().UTC()

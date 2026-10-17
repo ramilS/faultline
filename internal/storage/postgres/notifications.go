@@ -193,9 +193,9 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 		), claimed AS (
 			UPDATE notification_deliveries d SET attempts = d.attempts + 1, next_attempt_at = $3
 			FROM due WHERE d.id = due.id
-			RETURNING d.id, d.channel_id, d.issue_id, d.trigger, d.environment, d.attempts
+			RETURNING d.id, d.channel_id, d.issue_id, d.trigger, d.environment, d.event_id, d.attempts
 		)
-		SELECT claimed.id, claimed.channel_id, claimed.attempts, claimed.trigger, claimed.environment,
+		SELECT claimed.id, claimed.channel_id, claimed.attempts, claimed.trigger, claimed.environment, COALESCE(claimed.event_id::text, ''),
 		       c.kind, c.target, c.secret, p.slug, p.name, p.icon_emoji, i.id, i.title, i.culprit, i.level
 		FROM claimed
 		JOIN notification_channels c ON c.id = claimed.channel_id
@@ -213,7 +213,7 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 		var delivery notify.PendingDelivery
 		n := &delivery.Notification
 		d := &delivery.Destination
-		if err := rows.Scan(&delivery.ID, &delivery.ChannelID, &delivery.Attempts, &n.Trigger, &n.Environment,
+		if err := rows.Scan(&delivery.ID, &delivery.ChannelID, &delivery.Attempts, &n.Trigger, &n.Environment, &n.EventID,
 			&d.Kind, &d.Target, &d.Secret, &n.ProjectSlug, &n.ProjectName, &n.ProjectEmoji, &n.IssueID, &n.Title, &n.Culprit, &n.Level); err != nil {
 			return nil, fmt.Errorf("scan notification delivery: %w", err)
 		}
@@ -286,16 +286,20 @@ func enqueueNotifications(ctx context.Context, tx pgx.Tx, projectID int64, chang
 	issueIDs := make([]int64, len(deliveries))
 	triggers := make([]string, len(deliveries))
 	environments := make([]string, len(deliveries))
+	eventIDs := make([]string, len(deliveries))
 	for index, delivery := range deliveries {
 		channelIDs[index] = delivery.ChannelID
 		issueIDs[index] = delivery.IssueID
 		triggers[index] = string(delivery.Trigger)
 		environments[index] = delivery.Environment
+		eventIDs[index] = delivery.EventID
 	}
 	_, err = tx.Exec(ctx, `
-		INSERT INTO notification_deliveries (channel_id, issue_id, trigger, environment)
-		SELECT * FROM unnest($1::bigint[], $2::bigint[], $3::text[], $4::text[])
-	`, channelIDs, issueIDs, triggers, environments)
+		INSERT INTO notification_deliveries (channel_id, issue_id, trigger, environment, event_id)
+		SELECT channel_id, issue_id, trigger, environment, NULLIF(event_id, '')::uuid
+		FROM unnest($1::bigint[], $2::bigint[], $3::text[], $4::text[], $5::text[])
+			AS delivery(channel_id, issue_id, trigger, environment, event_id)
+	`, channelIDs, issueIDs, triggers, environments, eventIDs)
 	if err != nil {
 		return fmt.Errorf("enqueue notification deliveries: %w", err)
 	}
