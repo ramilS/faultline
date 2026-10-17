@@ -13,10 +13,10 @@ export function displayLocation(frame: SymbolicatedFrame): string {
 
 /** Function name, preferring a non-empty original name over the generated one. */
 export function displayFunction(frame: SymbolicatedFrame): string {
-  if (frame.original && frame.original.function) {
+  if (frame.original && frame.original.function.trim()) {
     return frame.original.function;
   }
-  return frame.generated.function;
+  return frame.generated.function.trim() ? frame.generated.function : "<unknown>";
 }
 
 /** The exception and its transitive causes, in received (outermost-first) order. */

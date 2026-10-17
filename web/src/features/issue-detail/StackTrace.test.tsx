@@ -73,4 +73,29 @@ describe("StackTrace", () => {
       ].join("\n")
     );
   });
+
+  it("labels unnamed native frames instead of rendering blank rows", () => {
+    const unnamedFrame: SymbolicatedFrame = {
+      generated: { function: "", filename: "", line: 0, column: 0, in_app: true },
+      original: null,
+      context: []
+    };
+    const exception: SymbolicatedException = {
+      type: "kotlin.IllegalArgumentException",
+      value: "Key was already used",
+      cause: null,
+      frames: [unnamedFrame, unnamedFrame]
+    };
+    const { container } = render(<StackTrace exception={exception} />);
+
+    expect([...container.querySelectorAll("ul > li")].map((row) => row.textContent)).toEqual([
+      "<unknown>",
+      "<unknown>"
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Raw" }));
+    expect(container.querySelector("pre")?.textContent).toBe(
+      "kotlin.IllegalArgumentException: Key was already used\n  at <unknown>\n  at <unknown>"
+    );
+  });
 });

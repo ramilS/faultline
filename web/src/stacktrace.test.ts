@@ -45,6 +45,24 @@ test("prefers original function name and falls back to generated", () => {
   assert.equal(displayFunction(emptyOriginalFunction), "a");
 });
 
+test("labels a frame whose function name is missing", () => {
+  const unnamedFrame: SymbolicatedFrame = {
+    generated: { function: "", filename: "", line: 0, column: 0, in_app: true },
+    original: null,
+    context: [],
+  };
+
+  assert.equal(displayFunction(unnamedFrame), "<unknown>");
+  assert.equal(
+    displayFunction({
+      ...unnamedFrame,
+      generated: { ...unnamedFrame.generated, function: "  " },
+      original: { ...unnamedFrame.generated, function: "" },
+    }),
+    "<unknown>",
+  );
+});
+
 test("flattens the cause chain in received order", () => {
   const root: SymbolicatedException = {
     type: "TypeError",
