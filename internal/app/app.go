@@ -13,6 +13,7 @@ import (
 	"github.com/ramilS/faultline/internal/api"
 	"github.com/ramilS/faultline/internal/auth"
 	"github.com/ramilS/faultline/internal/dashboard"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/platform/httpjson"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/sentrycli"
@@ -29,6 +30,7 @@ type Dependencies struct {
 	ArtifactService            api.ArtifactService
 	SourceMaps                 sourcemap.Repository
 	ProguardMappings           proguard.Repository
+	NativeDebugFiles           nativedebug.Repository
 	UploadChunks               sentrycli.ChunkStore
 	Releases                   sentrycli.ReleaseStore
 	IssueService               api.IssueService

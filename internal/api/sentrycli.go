@@ -16,6 +16,7 @@ import (
 
 	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/artifactauth"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/sentrycli"
 	"github.com/ramilS/faultline/internal/sourcemap"
@@ -41,13 +42,15 @@ const (
 // {org} path segment is accepted and discarded, because Faultline has no
 // organizations and the token alone decides what a caller may write.
 type SentryCLIHandler struct {
-	artifacts   ArtifactService
-	projects    ProjectResolver
-	chunks      sentrycli.ChunkStore
-	sourceMaps  sourcemap.Repository
-	releases    sentrycli.ReleaseStore
-	mappings    proguard.Repository
-	reportError func(error)
+	artifacts    ArtifactService
+	projects     ProjectResolver
+	chunks       sentrycli.ChunkStore
+	sourceMaps   sourcemap.Repository
+	releases     sentrycli.ReleaseStore
+	mappings     proguard.Repository
+	nativeFiles  nativedebug.Repository
+	decodeNative func([]byte) (nativedebug.Upload, error)
+	reportError  func(error)
 
 	// sweepMu and lastSweep throttle sweepAbandonedChunks to at most once per
 	// chunkSweepInterval across every request this handler serves.
@@ -56,13 +59,18 @@ type SentryCLIHandler struct {
 }
 
 func NewSentryCLIHandler(artifacts ArtifactService, projects ProjectResolver, chunks sentrycli.ChunkStore, sourceMaps sourcemap.Repository, releases sentrycli.ReleaseStore, mappings proguard.Repository, options Options) *SentryCLIHandler {
+	return NewSentryCLIHandlerWithNative(artifacts, projects, chunks, sourceMaps, releases, mappings, nil, options)
+}
+
+func NewSentryCLIHandlerWithNative(artifacts ArtifactService, projects ProjectResolver, chunks sentrycli.ChunkStore, sourceMaps sourcemap.Repository, releases sentrycli.ReleaseStore, mappings proguard.Repository, nativeFiles nativedebug.Repository, options Options) *SentryCLIHandler {
 	reportError := options.ReportError
 	if reportError == nil {
 		reportError = func(error) {}
 	}
 	return &SentryCLIHandler{
 		artifacts: artifacts, projects: projects, chunks: chunks,
-		sourceMaps: sourceMaps, releases: releases, mappings: mappings, reportError: reportError,
+		sourceMaps: sourceMaps, releases: releases, mappings: mappings, nativeFiles: nativeFiles,
+		decodeNative: nativedebug.DecodeUpload, reportError: reportError,
 	}
 }
 

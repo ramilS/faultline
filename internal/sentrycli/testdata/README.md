@@ -10,6 +10,11 @@ bare `\n` to the `\r\n` that was actually on the wire (see the note below). **Ne
 files by hand** — a fixture that no longer matches the wire is worse than no fixture, because
 every test that reads it keeps passing while the real CLI breaks.
 
+No Apple dSYM capture is currently checked into this directory. Native parser
+tests generate minimal Mach-O data in code; if a real `debug-files upload`
+capture is added later, record and replace it using the same byte-exact rules
+above rather than hand-editing its request or payload.
+
 To change them, re-record and replace the whole set at once, so the debug ids stay consistent
 across files. The recording rig is: a throwaway HTTP server that writes every request verbatim to
 a file and answers `GET .../chunk-upload/` with the capability JSON, `.../artifactbundle/assemble/`

@@ -11,6 +11,7 @@ import (
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/platform/config"
 	platformpostgres "github.com/ramilS/faultline/internal/platform/postgres"
@@ -41,6 +42,7 @@ type runtimeDatabase struct {
 	Groups         group.Repository
 	SourceMaps     sourcemap.Repository
 	Proguard       proguard.Repository
+	NativeDebug    nativedebug.Repository
 	UploadChunks   sentrycli.ChunkStore
 	Releases       sentrycli.ReleaseStore
 	IngestKeys     ingest.KeyStore
@@ -125,6 +127,7 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		Groups:               storagepostgres.NewGroupRepository(pool),
 		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactQuota),
 		Proguard:             storagepostgres.NewProguardMappingRepository(pool, artifactQuota),
+		NativeDebug:          storagepostgres.NewNativeDebugFileRepository(pool, artifactQuota),
 		UploadChunks:         storagepostgres.NewUploadChunkStore(pool),
 		Releases:             storagepostgres.NewReleaseStore(pool),
 		GroupingRules:        groupingRules,

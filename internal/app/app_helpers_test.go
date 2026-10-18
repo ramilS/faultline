@@ -19,6 +19,7 @@ import (
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/project"
 	"github.com/ramilS/faultline/internal/scrub"
@@ -211,6 +212,15 @@ func (stubProguardRepository) Put(context.Context, int64, string, proguard.Decod
 }
 func (stubProguardRepository) Find(context.Context, int64, string) (proguard.Stored, error) {
 	return proguard.Stored{}, proguard.ErrNotFound
+}
+
+type stubNativeDebugRepository struct{}
+
+func (stubNativeDebugRepository) Put(context.Context, int64, nativedebug.Upload) error {
+	return errors.New("unused")
+}
+func (stubNativeDebugRepository) Find(context.Context, int64, string) (nativedebug.Stored, error) {
+	return nativedebug.Stored{}, nativedebug.ErrNotFound
 }
 
 type appDataScrubbingServiceStub struct{}

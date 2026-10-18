@@ -13,6 +13,7 @@ import (
 	"strings"
 	"testing"
 
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/sentrycli"
 	"github.com/ramilS/faultline/internal/storage"
@@ -31,6 +32,23 @@ type fakeProguardMappings struct {
 	stored map[string]proguard.DecodedUpload
 	puts   int
 	putErr error
+}
+
+type fakeNativeDebugFiles struct {
+	uploads []nativedebug.Upload
+	err     error
+}
+
+func (f *fakeNativeDebugFiles) Put(_ context.Context, _ int64, upload nativedebug.Upload) error {
+	if f.err != nil {
+		return f.err
+	}
+	f.uploads = append(f.uploads, upload)
+	return nil
+}
+
+func (*fakeNativeDebugFiles) Find(context.Context, int64, string) (nativedebug.Stored, error) {
+	return nativedebug.Stored{}, nativedebug.ErrNotFound
 }
 
 func (f *fakeProguardMappings) Put(_ context.Context, _ int64, mappingUUID string, upload proguard.DecodedUpload) (bool, error) {
@@ -112,6 +130,106 @@ func TestAssembleDebugFilesStoresTheRecordedChunkedUpload(t *testing.T) {
 	}
 	if fixture.chunks.deleted != 1 {
 		t.Fatalf("deleted chunks = %d, want the consumed chunk removed", fixture.chunks.deleted)
+	}
+}
+
+func TestAssembleDebugFilesStoresNativeUniversalContentOnce(t *testing.T) {
+	handler, fixture := newSentryCLIFixture(t)
+	nativeFiles := &fakeNativeDebugFiles{}
+	handler.nativeFiles = nativeFiles
+	want := nativedebug.Upload{UncompressedBytes: 6, Objects: []nativedebug.Object{
+		{DebugID: "01000000-0000-0000-0000-000000000000", Index: 0},
+		{DebugID: "02000000-0000-0000-0000-000000000000", Index: 1},
+	}}
+	handler.decodeNative = func([]byte) (nativedebug.Upload, error) { return want, nil }
+	body := []byte("macho!")
+	checksum := sentrycli.ComputeChecksum(body)
+	fixture.chunks.staged[checksum] = body
+	request := httptest.NewRequest(http.MethodPost, "/api/0/projects/demo/demo/files/difs/assemble/", strings.NewReader(`{"`+checksum.String()+`":{"name":"App","chunks":["`+checksum.String()+`"]}}`))
+	request.Header.Set("Authorization", "Bearer "+testArtifactToken)
+	request.SetPathValue("project", "demo")
+	recorder := httptest.NewRecorder()
+
+	handler.AssembleDebugFiles(recorder, request)
+
+	result := decodeAssemble(t, recorder.Body.Bytes())[checksum.String()]
+	if recorder.Code != http.StatusOK || result["state"] != "ok" {
+		t.Fatalf("status=%d result=%v", recorder.Code, result)
+	}
+	if len(nativeFiles.uploads) != 1 || len(nativeFiles.uploads[0].Objects) != 2 {
+		t.Fatalf("uploads=%#v", nativeFiles.uploads)
+	}
+	if fixture.chunks.deleted != 1 {
+		t.Fatalf("deleted=%d", fixture.chunks.deleted)
+	}
+}
+
+func TestAssembleDebugFilesKeepsSharedChunksUntilEveryFileIsStored(t *testing.T) {
+	handler, fixture := newSentryCLIFixture(t)
+	nativeFiles := &fakeNativeDebugFiles{}
+	handler.nativeFiles = nativeFiles
+	handler.decodeNative = func([]byte) (nativedebug.Upload, error) {
+		return nativedebug.Upload{Objects: []nativedebug.Object{{DebugID: "01000000-0000-0000-0000-000000000000"}}}, nil
+	}
+	shared, firstTail, secondTail := []byte("shared"), []byte("first"), []byte("second")
+	sharedSum, firstTailSum, secondTailSum := sentrycli.ComputeChecksum(shared), sentrycli.ComputeChecksum(firstTail), sentrycli.ComputeChecksum(secondTail)
+	for checksum, body := range map[sentrycli.Checksum][]byte{sharedSum: shared, firstTailSum: firstTail, secondTailSum: secondTail} {
+		fixture.chunks.staged[checksum] = body
+	}
+	firstSum := sentrycli.ComputeChecksum(append(append([]byte{}, shared...), firstTail...))
+	secondSum := sentrycli.ComputeChecksum(append(append([]byte{}, shared...), secondTail...))
+	body, err := json.Marshal(map[string]debugFileAssembleItem{
+		firstSum.String():  {Name: "First", Chunks: []string{sharedSum.String(), firstTailSum.String()}},
+		secondSum.String(): {Name: "Second", Chunks: []string{sharedSum.String(), secondTailSum.String()}},
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/0/projects/demo/demo/files/difs/assemble/", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+testArtifactToken)
+	request.SetPathValue("project", "demo")
+	recorder := httptest.NewRecorder()
+
+	handler.AssembleDebugFiles(recorder, request)
+
+	results := decodeAssemble(t, recorder.Body.Bytes())
+	if recorder.Code != http.StatusOK || results[firstSum.String()]["state"] != "ok" || results[secondSum.String()]["state"] != "ok" {
+		t.Fatalf("status=%d results=%v", recorder.Code, results)
+	}
+	if len(nativeFiles.uploads) != 2 || fixture.chunks.deleted != 3 {
+		t.Fatalf("uploads=%d deleted=%d", len(nativeFiles.uploads), fixture.chunks.deleted)
+	}
+}
+
+func TestAssembleDebugFilesReportsNativeValidationConflictAndQuotaAsPerFileErrors(t *testing.T) {
+	for _, test := range []struct {
+		name              string
+		decodeErr, putErr error
+	}{
+		{"malformed", nativedebug.ErrInvalidDebugFile, nil},
+		{"conflict", nil, nativedebug.ErrConflict},
+		{"quota", nil, storage.ErrArtifactQuotaExceeded},
+	} {
+		t.Run(test.name, func(t *testing.T) {
+			handler, fixture := newSentryCLIFixture(t)
+			nativeFiles := &fakeNativeDebugFiles{err: test.putErr}
+			handler.nativeFiles = nativeFiles
+			handler.decodeNative = func([]byte) (nativedebug.Upload, error) {
+				return nativedebug.Upload{Objects: []nativedebug.Object{{DebugID: "01000000-0000-0000-0000-000000000000"}}}, test.decodeErr
+			}
+			body := []byte("native")
+			checksum := sentrycli.ComputeChecksum(body)
+			fixture.chunks.staged[checksum] = body
+			request := httptest.NewRequest(http.MethodPost, "/api/0/projects/demo/demo/files/difs/assemble/", strings.NewReader(`{"`+checksum.String()+`":{"name":"App","chunks":["`+checksum.String()+`"]}}`))
+			request.Header.Set("Authorization", "Bearer "+testArtifactToken)
+			request.SetPathValue("project", "demo")
+			recorder := httptest.NewRecorder()
+			handler.AssembleDebugFiles(recorder, request)
+			result := decodeAssemble(t, recorder.Body.Bytes())[checksum.String()]
+			if recorder.Code != http.StatusOK || result["state"] != "error" {
+				t.Fatalf("status=%d result=%v", recorder.Code, result)
+			}
+		})
 	}
 }
 

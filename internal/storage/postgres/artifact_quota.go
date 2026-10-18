@@ -13,11 +13,11 @@ import (
 // of Postgres' shared advisory-lock namespace; see groupingRuleLockClassID.
 const artifactQuotaLockClassID int32 = 0x6152_5100
 
-// ArtifactStoreOption configures the source-map and ProGuard/R8 mapping stores.
+// ArtifactStoreOption configures all project-scoped artifact stores.
 type ArtifactStoreOption func(*artifactQuota)
 
-// WithArtifactQuota caps the uncompressed bytes of source maps and ProGuard/R8
-// mappings one project may store. A limit of zero or less means no cap.
+// WithArtifactQuota caps the uncompressed bytes of source maps, ProGuard/R8
+// mappings, and native debug files one project may store.
 func WithArtifactQuota(limitBytes int64) ArtifactStoreOption {
 	return func(quota *artifactQuota) { quota.limitBytes = limitBytes }
 }
@@ -62,6 +62,7 @@ func (q artifactQuota) enforce(ctx context.Context, tx pgx.Tx, projectID int64) 
 	if err := tx.QueryRow(ctx, `
 		SELECT (SELECT COALESCE(SUM(uncompressed_bytes), 0) FROM source_map_blobs WHERE project_id = $1)
 		     + (SELECT COALESCE(SUM(uncompressed_bytes), 0) FROM proguard_mappings WHERE project_id = $1)
+		     + (SELECT COALESCE(SUM(uncompressed_bytes), 0) FROM native_debug_file_blobs WHERE project_id = $1)
 	`, projectID).Scan(&usedBytes); err != nil {
 		return fmt.Errorf("measure project artifact storage: %w", err)
 	}

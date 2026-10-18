@@ -20,6 +20,7 @@ import (
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/notify"
 	"github.com/ramilS/faultline/internal/pipeline"
 	"github.com/ramilS/faultline/internal/platform/config"
@@ -182,9 +183,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 	groupService := group.NewService(database.Groups)
 
 	symbolicationResolver := reportingResolver{
-		resolver: proguard.NewResolver(
-			database.Proguard,
-			sourcemap.NewResolver(database.SourceMaps, sourcemap.NewParsedMapCache(parsedMapCacheBudget)),
+		resolver: nativedebug.NewResolver(
+			database.NativeDebug,
+			proguard.NewResolver(
+				database.Proguard,
+				sourcemap.NewResolver(database.SourceMaps, sourcemap.NewParsedMapCache(parsedMapCacheBudget)),
+			),
 		),
 		report: reportPersistenceError,
 	}
@@ -355,6 +359,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		ArtifactService:            artifactService,
 		SourceMaps:                 database.SourceMaps,
 		ProguardMappings:           database.Proguard,
+		NativeDebugFiles:           database.NativeDebug,
 		UploadChunks:               database.UploadChunks,
 		Releases:                   database.Releases,
 		IssueService:               issueService,

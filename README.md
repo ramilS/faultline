@@ -17,8 +17,9 @@ into the binary; there is no separate service, queue, or worker to run.
   maps directly, authenticated with a per-project artifact token; Faultline's own
   upload endpoint keeps working alongside them. `sentry-cli upload-proguard` and
   the Sentry Android Gradle plugin upload ProGuard/R8 mappings the same way (see
-  [Android](#android-readable-stack-traces)). Native debug-file upload
-  (`sentry-cli debug-files upload`, dSYMs) is not supported. Commit association
+  [Android](#android-readable-stack-traces)). Apple dSYMs upload through the
+  current `sentry-cli debug-files upload` flow (see
+  [Apple native symbols](#apple-native-symbols)). Commit association
   (`setCommits`) is accepted and discarded — Faultline tracks no repositories.
 - **Deterministic grouping** — events fingerprint into issues across releases, with
   per-project rules when the default grouping is wrong, plus manual issue merge.
@@ -42,7 +43,8 @@ into the binary; there is no separate service, queue, or worker to run.
   appears or a resolved one recurs (see [Notifications](#notifications)).
 - **Issue detail** — occurrence charts, tag facets, event paging, request timelines,
   browser stack traces symbolicated from uploaded source maps, and Android stack
-  traces retraced from uploaded ProGuard/R8 mappings.
+  traces retraced from uploaded ProGuard/R8 mappings, and Apple native frames
+  symbolicated from uploaded dSYMs.
 - **Explicit operations** — no implicit migrations, no implicit accounts.
 
 ## Quickstart
@@ -58,7 +60,7 @@ Create the schema and the first account. Neither happens automatically:
 
 ```sh
 docker compose exec faultline faultline migrate up
-docker compose exec faultline faultline migrate version   # expect: 18 clean
+docker compose exec faultline faultline migrate version   # expect: 23 clean
 docker compose exec faultline faultline user create --email admin@example.com --name "Administrator"
 ```
 
@@ -145,10 +147,33 @@ A mapping is capped at 100MB uncompressed and, once uploaded, is immutable: a
 second upload naming the same mapping UUID with different content is rejected.
 There is no way to delete a stored mapping short of direct SQL.
 
-Each project may store 1 GiB (uncompressed) of source maps and mappings
+Each project may store 1 GiB (uncompressed) of source maps, mappings, and native debug files
 combined; an upload that would exceed it is refused with `413`. Re-uploading
 content the project already holds always succeeds. Set
 `FAULTLINE_ARTIFACT_QUOTA_BYTES` to change the cap, or to `0` to remove it.
+
+## Apple native symbols
+
+Faultline accepts the Mach-O files inside Apple dSYM bundles through the
+current chunked debug-file protocol. Create an artifact token for the target
+project, then run:
+
+```sh
+SENTRY_AUTH_TOKEN=<raw_token> sentry-cli --url https://faultline.example.com \
+  debug-files upload --org faultline --project web path/to/App.app.dSYM
+```
+
+Thin and universal Mach-O files are supported. Each architecture is indexed by
+its embedded `LC_UUID`; filenames are never trusted as debug identifiers, and a
+universal file is stored and charged only once. When an event's
+`debug_meta.images` names that UUID, Faultline translates `instruction_addr`
+from the reported image load address and resolves the best available function,
+source file, and line from DWARF while leaving the stored event unchanged.
+
+Uploads are project-scoped and immutable by UUID. Re-uploading identical
+content is a no-op; different content under an occupied UUID is rejected.
+Faultline does not provide stack walking, source bundles, BCSymbolMap handling,
+Apple system symbols, or the legacy `upload-dsym` endpoint.
 
 ## Notifications
 

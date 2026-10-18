@@ -271,6 +271,36 @@ func TestProguardUploadRoutesAbsentWithoutMappingRepository(t *testing.T) {
 	}
 }
 
+func TestNativeDIFRouteExistsWithoutProguardAndLegacyRouteDoesNot(t *testing.T) {
+	dependencies := authDependencies(&authServiceStub{authUser: auth.User{ID: 1}})
+	dependencies.ArtifactService = stubArtifactService{}
+	dependencies.ProjectService = stubProjectResolver{}
+	dependencies.UploadChunks = stubChunkStore{}
+	dependencies.Releases = stubReleaseStore{}
+	dependencies.SourceMaps = stubSourceMapRepository{}
+	dependencies.NativeDebugFiles = stubNativeDebugRepository{}
+	handler := New(dependencies)
+
+	for _, test := range []struct {
+		path       string
+		wantStatus int
+	}{
+		{"/api/0/projects/demo/demo/files/difs/assemble/", http.StatusUnauthorized},
+		{"/api/0/projects/demo/demo/files/dsyms/", http.StatusNotImplemented},
+	} {
+		recorder := httptest.NewRecorder()
+		request := httptest.NewRequest(http.MethodPost, test.path, http.NoBody)
+		if test.wantStatus == http.StatusNotImplemented {
+			request.Header.Set("Cookie", api.SessionCookieName+"=token")
+			request.Header.Set("Origin", "http://"+request.Host)
+		}
+		handler.ServeHTTP(recorder, request)
+		if recorder.Code != test.wantStatus {
+			t.Fatalf("%s status = %d, want %d: %s", test.path, recorder.Code, test.wantStatus, recorder.Body.String())
+		}
+	}
+}
+
 // TestGroupRoutesAbsentWithoutGroupService closes the same gap as the two
 // tests above, for group administration: before a recent fix, testDependencies
 // always left GroupService nil, so every app test exercised only the false

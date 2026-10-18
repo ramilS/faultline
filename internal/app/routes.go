@@ -29,9 +29,9 @@ func sentryCLIRoutes(dependencies Dependencies) []route {
 		dependencies.Releases == nil {
 		return nil
 	}
-	handler := api.NewSentryCLIHandler(
+	handler := api.NewSentryCLIHandlerWithNative(
 		dependencies.ArtifactService, dependencies.ProjectService, dependencies.UploadChunks,
-		dependencies.SourceMaps, dependencies.Releases, dependencies.ProguardMappings,
+		dependencies.SourceMaps, dependencies.Releases, dependencies.ProguardMappings, dependencies.NativeDebugFiles,
 		api.Options{ReportError: dependencies.ReportError},
 	)
 	routes := []route{
@@ -58,19 +58,19 @@ func sentryCLIRoutes(dependencies Dependencies) []route {
 		{pattern: "GET /api/0/organizations/{org}/repos/", gate: gatePublic, handler: http.HandlerFunc(handler.ListRepos)},
 		{pattern: "GET /api/0/organizations/{org}/releases/{version}/previous-with-commits/", gate: gatePublic, handler: http.HandlerFunc(handler.PreviousReleaseWithCommits)},
 	}
-	if dependencies.ProguardMappings == nil {
+	if dependencies.ProguardMappings == nil && dependencies.NativeDebugFiles == nil {
 		return routes
 	}
-	// `upload-proguard` speaks one of two protocols depending on the CLI:
-	// sentry-cli 3.x chunk-uploads and asks difs/assemble, 2.x posts one
-	// multipart request to files/dsyms. Both are recorded under
-	// internal/sentrycli/testdata/proguard. {org} is discarded like everywhere
-	// else here; {project} is read and checked against the token's own project
-	// by ownsEveryProject, same as the bundle assemble route above.
-	return append(routes,
-		route{pattern: "POST /api/0/projects/{org}/{project}/files/difs/assemble/", gate: gatePublic, handler: http.HandlerFunc(handler.AssembleDebugFiles)},
-		route{pattern: "POST /api/0/projects/{org}/{project}/files/dsyms/", gate: gatePublic, handler: http.HandlerFunc(handler.UploadLegacyDebugFile)},
-	)
+	// Current `debug-files upload` and `upload-proguard` both use the chunked
+	// difs/assemble route. Legacy sentry-cli 2.x ProGuard upload instead posts
+	// multipart data to files/dsyms; register that compatibility route only
+	// when the ProGuard repository exists. {org} is discarded like everywhere
+	// else here; {project} is checked against the token's project.
+	routes = append(routes, route{pattern: "POST /api/0/projects/{org}/{project}/files/difs/assemble/", gate: gatePublic, handler: http.HandlerFunc(handler.AssembleDebugFiles)})
+	if dependencies.ProguardMappings != nil {
+		routes = append(routes, route{pattern: "POST /api/0/projects/{org}/{project}/files/dsyms/", gate: gatePublic, handler: http.HandlerFunc(handler.UploadLegacyDebugFile)})
+	}
+	return routes
 }
 
 // authRoutes covers session bootstrap: login, logout and the "who am I" probe.

@@ -10,15 +10,17 @@ import (
 	"time"
 
 	"github.com/ramilS/faultline/internal/artifactauth"
+	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/sentrycli"
 	"github.com/ramilS/faultline/internal/storage"
 )
 
 const (
-	// maxDebugFilesPerAssemble bounds how many files one assemble request may
-	// name; sentry-cli sends one per mapping on its command line.
-	maxDebugFilesPerAssemble = 8
+	// maxDebugFilesPerAssemble bounds work from one request while allowing an
+	// Xcode archive containing the app plus many framework dSYMs. The JSON body
+	// and per-file limits provide independent byte ceilings.
+	maxDebugFilesPerAssemble = 256
 
 	// legacyUploadLimit bounds the compressed archive of a legacy upload. The
 	// mappings inside are bounded again, uncompressed, by proguard.MaxDecodedBytes.
@@ -68,12 +70,30 @@ func (h *SentryCLIHandler) AssembleDebugFiles(w http.ResponseWriter, r *http.Req
 
 	options := sentrycli.DefaultChunkOptions(r.URL.Path)
 	results := make(map[string]debugFileAssembleResult, len(request))
+	consumed := make(map[sentrycli.Checksum]struct{})
 	for key, item := range request {
 		result, ok := h.assembleDebugFile(w, r, token, key, item, options)
 		if !ok {
 			return
 		}
 		results[key] = result
+		if result.State == "ok" {
+			for _, raw := range item.Chunks {
+				checksum, err := sentrycli.ParseChecksum(raw)
+				if err == nil { // assembleDebugFile already validated every entry.
+					consumed[checksum] = struct{}{}
+				}
+			}
+		}
+	}
+	used := make([]sentrycli.Checksum, 0, len(consumed))
+	for checksum := range consumed {
+		used = append(used, checksum)
+	}
+	if len(used) > 0 {
+		if err := h.chunks.Delete(r.Context(), token.ProjectID, used); err != nil {
+			h.reportError(fmt.Errorf("delete consumed upload chunks: %w", err))
+		}
 	}
 	writeJSON(w, http.StatusOK, results)
 }
@@ -109,9 +129,15 @@ func (h *SentryCLIHandler) assembleDebugFile(w http.ResponseWriter, r *http.Requ
 		return failedDebugFile("assembled file does not match its checksum"), true
 	}
 
-	mappingUUID, ok := proguard.MappingUUIDFromName(item.Name)
-	if !ok {
-		return failedDebugFile("only proguard mappings named /proguard/<uuid>.txt are supported"), true
+	if mappingUUID, ok := proguard.MappingUUIDFromName(item.Name); ok {
+		return h.storeProguardDebugFile(w, r, token, mappingUUID, assembled)
+	}
+	return h.storeNativeDebugFile(w, r, token, assembled)
+}
+
+func (h *SentryCLIHandler) storeProguardDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, mappingUUID string, assembled []byte) (debugFileAssembleResult, bool) {
+	if h.mappings == nil {
+		return failedDebugFile("proguard mappings are not configured"), true
 	}
 	upload, err := proguard.DecodeUpload(bytes.NewReader(assembled))
 	switch {
@@ -135,8 +161,34 @@ func (h *SentryCLIHandler) assembleDebugFile(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return debugFileAssembleResult{}, false
 	}
-	if err := h.chunks.Delete(r.Context(), token.ProjectID, wanted); err != nil {
-		h.reportError(fmt.Errorf("delete consumed upload chunks: %w", err))
+	return debugFileAssembleResult{State: "ok", MissingChunks: []string{}}, true
+}
+
+func (h *SentryCLIHandler) storeNativeDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, assembled []byte) (debugFileAssembleResult, bool) {
+	if h.nativeFiles == nil {
+		return failedDebugFile("not a valid proguard mapping or Mach-O debug file"), true
+	}
+	upload, err := h.decodeNative(assembled)
+	switch {
+	case errors.Is(err, nativedebug.ErrTooLarge):
+		return failedDebugFile("native debug file is too large"), true
+	case errors.Is(err, nativedebug.ErrInvalidDebugFile):
+		return failedDebugFile("not a valid Mach-O debug file with DWARF"), true
+	case err != nil:
+		h.reportError(fmt.Errorf("decode native debug file: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return debugFileAssembleResult{}, false
+	}
+	if err := h.nativeFiles.Put(r.Context(), token.ProjectID, upload); err != nil {
+		if errors.Is(err, nativedebug.ErrConflict) {
+			return failedDebugFile("a different debug file is already stored under this uuid"), true
+		}
+		if errors.Is(err, storage.ErrArtifactQuotaExceeded) {
+			return failedDebugFile(artifactQuotaMessage), true
+		}
+		h.reportError(fmt.Errorf("store native debug file: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return debugFileAssembleResult{}, false
 	}
 	return debugFileAssembleResult{State: "ok", MissingChunks: []string{}}, true
 }
