@@ -18,7 +18,7 @@ func TestArtifactQuotaCountsSourceMapsAndProguardMappingsTogether(t *testing.T) 
 	projects := storagepostgres.NewProjectRepository(pool).Projects
 	mapping := proguardUpload(t, "quota")
 	sourceMap := sourceMapUpload("0123456789")
-	limit := mapping.UncompressedBytes + int64(len(sourceMap.JSON)) + 5
+	limit := int64(len(mapping.Compressed)+len(sourceMap.Compressed)) + 5
 	quota := storagepostgres.WithArtifactQuota(limit)
 	mappings := storagepostgres.NewProguardMappingRepository(pool, quota)
 	sourceMaps := storagepostgres.NewSourceMapRepository(pool, quota)

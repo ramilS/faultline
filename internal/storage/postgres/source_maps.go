@@ -15,15 +15,15 @@ import (
 )
 
 type sourceMapRepository struct {
-	pool  *pgxpool.Pool
-	quota artifactQuota
+	pool   *pgxpool.Pool
+	limits artifactLimits
 }
 
 var _ sourcemap.Repository = (*sourceMapRepository)(nil)
 
 // NewSourceMapRepository returns a source-map adapter backed by pool.
 func NewSourceMapRepository(pool *pgxpool.Pool, options ...ArtifactStoreOption) sourcemap.Repository {
-	return &sourceMapRepository{pool: pool, quota: newArtifactQuota(options)}
+	return &sourceMapRepository{pool: pool, limits: newArtifactLimits(options)}
 }
 
 // Put registers the release, stores the content once per project, and points a
@@ -39,7 +39,7 @@ func (repository *sourceMapRepository) Put(ctx context.Context, projectID int64,
 	}
 	defer tx.Rollback(ctx)
 
-	if err := repository.quota.lock(ctx, tx, projectID); err != nil {
+	if err := repository.limits.lock(ctx, tx, projectID); err != nil {
 		return sourcemap.Map{}, false, err
 	}
 	releaseID, err := upsertRelease(ctx, tx, projectID, version)
@@ -51,7 +51,7 @@ func (repository *sourceMapRepository) Put(ctx context.Context, projectID int64,
 		return sourcemap.Map{}, false, err
 	}
 	if blobCreated {
-		if err := repository.quota.enforce(ctx, tx, projectID); err != nil {
+		if err := repository.limits.enforce(ctx, tx, projectID); err != nil {
 			return sourcemap.Map{}, false, fmt.Errorf("put source map: %w", err)
 		}
 	}
@@ -171,7 +171,7 @@ func (repository *sourceMapRepository) PutBundle(ctx context.Context, projectID 
 	}
 	defer tx.Rollback(ctx)
 
-	if err := repository.quota.lock(ctx, tx, projectID); err != nil {
+	if err := repository.limits.lock(ctx, tx, projectID); err != nil {
 		return err
 	}
 	var releaseID *int64
@@ -219,7 +219,7 @@ func (repository *sourceMapRepository) PutBundle(ctx context.Context, projectID 
 	}
 
 	if blobCreated {
-		if err := repository.quota.enforce(ctx, tx, projectID); err != nil {
+		if err := repository.limits.enforce(ctx, tx, projectID); err != nil {
 			return fmt.Errorf("put bundle: %w", err)
 		}
 	}

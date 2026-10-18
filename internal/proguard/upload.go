@@ -71,6 +71,9 @@ type Repository interface {
 	Put(ctx context.Context, projectID int64, mappingUUID string, upload DecodedUpload) (created bool, err error)
 	// Find returns ErrNotFound when the project holds no such mapping.
 	Find(ctx context.Context, projectID int64, mappingUUID string) (Stored, error)
+	// MarkUsed records that a crash was just retraced with the mapping, which
+	// keeps it from being evicted ahead of mappings nobody needs.
+	MarkUsed(ctx context.Context, projectID int64, mappingUUID string) error
 }
 
 // DecodeUpload reads one mapping, bounds its size, validates its structure and

@@ -27,6 +27,7 @@ func TestLoadUsesDatabaseDefaults(t *testing.T) {
 		MaxConnIdleTime:    30 * time.Minute,
 		HealthCheckPeriod:  time.Minute,
 		ArtifactQuotaBytes: 1 << 30,
+		DebugFileRetention: 30,
 	}
 	if got.Database != want {
 		t.Fatalf("Database = %#v, want %#v", got.Database, want)
@@ -298,6 +299,7 @@ func clearEnvironment(t *testing.T) {
 		"DATABASE_MAX_CONN_LIFETIME",
 		"DATABASE_MAX_CONN_IDLE_TIME",
 		"DATABASE_HEALTH_CHECK_PERIOD",
+		"FAULTLINE_DEBUG_FILE_RETENTION",
 		"FAULTLINE_SPILL_ENABLED",
 		"SPILL_DIR",
 		"FAULTLINE_SPILL_SEGMENT_BYTES",
@@ -340,6 +342,35 @@ func TestLoadArtifactQuotaFromEnv(t *testing.T) {
 			}
 			if err == nil && got.Database.ArtifactQuotaBytes != testCase.want {
 				t.Fatalf("ArtifactQuotaBytes = %d, want %d", got.Database.ArtifactQuotaBytes, testCase.want)
+			}
+		})
+	}
+}
+
+func TestLoadDebugFileRetentionFromEnv(t *testing.T) {
+	cases := map[string]struct {
+		value   string
+		want    int
+		wantErr bool
+	}{
+		"explicit":      {"12", 12, false},
+		"zero disables": {"0", 0, false},
+		"negative":      {"-1", 0, true},
+		"not a number":  {"many", 0, true},
+	}
+	for name, testCase := range cases {
+		t.Run(name, func(t *testing.T) {
+			clearEnvironment(t)
+			t.Setenv("DATABASE_URL", "postgres://db/faultline")
+			t.Setenv("FAULTLINE_DEBUG_FILE_RETENTION", testCase.value)
+
+			got, err := Load()
+
+			if (err != nil) != testCase.wantErr {
+				t.Fatalf("Load() error = %v, wantErr %v", err, testCase.wantErr)
+			}
+			if err == nil && got.Database.DebugFileRetention != testCase.want {
+				t.Fatalf("DebugFileRetention = %d, want %d", got.Database.DebugFileRetention, testCase.want)
 			}
 		})
 	}

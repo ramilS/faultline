@@ -7,14 +7,23 @@ import (
 	"fmt"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ramilS/faultline/internal/sourcemap"
+	"github.com/ramilS/faultline/internal/usage"
 )
 
 type fakeRepository struct {
 	mappings map[string]Stored
 	findErr  error
 	finds    int
+	marked   []string
+	markErr  error
+}
+
+func (f *fakeRepository) MarkUsed(_ context.Context, _ int64, mappingUUID string) error {
+	f.marked = append(f.marked, mappingUUID)
+	return f.markErr
 }
 
 func (f *fakeRepository) Put(context.Context, int64, string, DecodedUpload) (bool, error) {
@@ -485,5 +494,56 @@ func TestResolverRetracesAnExceptionSentAsABareArray(t *testing.T) {
 	}
 	if site := exception.Frames[0]; site.Original == nil || site.Original.Function != "com.acme.shop.Cart.load" {
 		t.Fatalf("original = %+v", site.Original)
+	}
+}
+
+type fakeClock struct{ at time.Time }
+
+func (c *fakeClock) now() time.Time { return c.at }
+
+// resolverAt is a resolver whose use recording runs on clock.
+func resolverAt(repo *fakeRepository, clock *fakeClock) *resolver {
+	r := NewResolver(repo, &recordingFallback{}).(*resolver)
+	r.used = usage.NewThrottle(usage.Interval, clock.now)
+	return r
+}
+
+// Retention keeps the mappings crashes still need, so a mapping served from the
+// cache must keep counting as used, without a write for every event.
+func TestResolverRecordsAMappingAsUsedOncePerInterval(t *testing.T) {
+	repo := &fakeRepository{mappings: map[string]Stored{mappingUUID: storedMapping(t, shopMapping)}}
+	clock := &fakeClock{at: time.Unix(1_000, 0)}
+	r := resolverAt(repo, clock)
+	input := sourcemap.EventInput{ProjectID: 7, Payload: androidEvent(proguardImages(mappingUUID), exceptionValue("E", "m", frame("a.a", "c", "SourceFile", 12)))}
+
+	for range 2 {
+		if _, err := r.Resolve(t.Context(), input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(repo.marked) != 1 {
+		t.Fatalf("marked %v within one interval, want once", repo.marked)
+	}
+	clock.at = clock.at.Add(usage.Interval)
+	if _, err := r.Resolve(t.Context(), input); err != nil {
+		t.Fatal(err)
+	}
+	if len(repo.marked) != 2 || repo.finds != 1 {
+		t.Fatalf("marked %v after %d finds, want a cached mapping marked again", repo.marked, repo.finds)
+	}
+}
+
+func TestResolverReportsAFailedUseRecordAndRetriesIt(t *testing.T) {
+	repo := &fakeRepository{mappings: map[string]Stored{mappingUUID: storedMapping(t, shopMapping)}, markErr: errors.New("database offline")}
+	r := resolverAt(repo, &fakeClock{at: time.Unix(1_000, 0)})
+	input := sourcemap.EventInput{ProjectID: 7, Payload: androidEvent(proguardImages(mappingUUID), exceptionValue("E", "m", frame("a.a", "c", "SourceFile", 12)))}
+
+	exception, err := r.Resolve(t.Context(), input)
+	if err == nil || !strings.Contains(err.Error(), "database offline") || exception == nil || exception.Frames[0].Original == nil {
+		t.Fatalf("exception=%#v err=%v, want it retraced and the failed record reported", exception, err)
+	}
+	repo.markErr = nil
+	if _, err := r.Resolve(t.Context(), input); err != nil || len(repo.marked) != 2 {
+		t.Fatalf("marked %v err=%v, want the failed record retried", repo.marked, err)
 	}
 }

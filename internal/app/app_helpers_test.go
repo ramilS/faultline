@@ -213,6 +213,7 @@ func (stubProguardRepository) Put(context.Context, int64, string, proguard.Decod
 func (stubProguardRepository) Find(context.Context, int64, string) (proguard.Stored, error) {
 	return proguard.Stored{}, proguard.ErrNotFound
 }
+func (stubProguardRepository) MarkUsed(context.Context, int64, string) error { return nil }
 
 type stubNativeDebugRepository struct{}
 
@@ -222,6 +223,7 @@ func (stubNativeDebugRepository) Put(context.Context, int64, nativedebug.Upload)
 func (stubNativeDebugRepository) Find(context.Context, int64, string) (nativedebug.Stored, error) {
 	return nativedebug.Stored{}, nativedebug.ErrNotFound
 }
+func (stubNativeDebugRepository) MarkUsed(context.Context, int64, string) error { return nil }
 
 type appDataScrubbingServiceStub struct{}
 

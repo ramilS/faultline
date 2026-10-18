@@ -83,10 +83,11 @@ func TestNativeDebugFileQuotaChargesBlobOnce(t *testing.T) {
 	pool := testdatabase.Migrated(t)
 	ctx := t.Context()
 	project := createProject(t, ctx, storagepostgres.NewProjectRepository(pool).Projects, "native-quota")
-	repository := storagepostgres.NewNativeDebugFileRepository(pool, storagepostgres.WithArtifactQuota(9))
 	firstID := "11000000-0000-0000-0000-000000000000"
 	secondID := "12000000-0000-0000-0000-000000000000"
-	if err := repository.Put(ctx, project.ID, nativeUpload("123456789", firstID, secondID)); err != nil {
+	universal := nativeUpload("123456789", firstID, secondID)
+	repository := storagepostgres.NewNativeDebugFileRepository(pool, storagepostgres.WithArtifactQuota(int64(len(universal.Compressed))))
+	if err := repository.Put(ctx, project.ID, universal); err != nil {
 		t.Fatalf("universal at quota: %v", err)
 	}
 	if err := repository.Put(ctx, project.ID, nativeUpload("x", "13000000-0000-0000-0000-000000000000")); !errors.Is(err, storage.ErrArtifactQuotaExceeded) {

@@ -15,12 +15,12 @@ import (
 )
 
 type nativeDebugFileRepository struct {
-	pool  *pgxpool.Pool
-	quota artifactQuota
+	pool   *pgxpool.Pool
+	limits artifactLimits
 }
 
 func NewNativeDebugFileRepository(pool *pgxpool.Pool, options ...ArtifactStoreOption) native.Repository {
-	return &nativeDebugFileRepository{pool: pool, quota: newArtifactQuota(options)}
+	return &nativeDebugFileRepository{pool: pool, limits: newArtifactLimits(options)}
 }
 
 func (repository *nativeDebugFileRepository) Put(ctx context.Context, projectID int64, upload native.Upload) error {
@@ -32,7 +32,7 @@ func (repository *nativeDebugFileRepository) Put(ctx context.Context, projectID 
 		return fmt.Errorf("begin native debug file put: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if err := repository.quota.lock(ctx, tx, projectID); err != nil {
+	if err := repository.limits.lock(ctx, tx, projectID); err != nil {
 		return err
 	}
 	var blobID int64
@@ -40,7 +40,7 @@ func (repository *nativeDebugFileRepository) Put(ctx context.Context, projectID 
 	if err := tx.QueryRow(ctx, `
 		INSERT INTO native_debug_file_blobs (project_id, content_sha256, compressed_file, uncompressed_bytes)
 		VALUES ($1, $2, $3, $4)
-		ON CONFLICT (project_id, content_sha256) DO UPDATE SET content_sha256 = EXCLUDED.content_sha256
+		ON CONFLICT (project_id, content_sha256) DO UPDATE SET last_used_at = now()
 		RETURNING id, (xmax = 0)
 	`, projectID, upload.ContentSHA256[:], upload.Compressed, upload.UncompressedBytes).Scan(&blobID, &created); err != nil {
 		return fmt.Errorf("upsert native debug file blob: %w", err)
@@ -75,7 +75,10 @@ func (repository *nativeDebugFileRepository) Put(ctx context.Context, projectID 
 		}
 	}
 	if created {
-		if err := repository.quota.enforce(ctx, tx, projectID); err != nil {
+		if err := repository.limits.evict(ctx, tx, projectID, evictNativeDebugFiles); err != nil {
+			return fmt.Errorf("put native debug file: %w", err)
+		}
+		if err := repository.limits.enforce(ctx, tx, projectID); err != nil {
 			return fmt.Errorf("put native debug file: %w", err)
 		}
 	}
@@ -109,4 +112,21 @@ func (repository *nativeDebugFileRepository) Find(ctx context.Context, projectID
 		return native.Stored{}, fmt.Errorf("find native debug file: invalid stored vmaddr: %w", err)
 	}
 	return stored, nil
+}
+
+// MarkUsed moves the debug file holding debugID to the front of the project's
+// retention order.
+func (repository *nativeDebugFileRepository) MarkUsed(ctx context.Context, projectID int64, debugID string) error {
+	parsed, err := uuid.Parse(debugID)
+	if err != nil {
+		return fmt.Errorf("mark native debug file used: invalid debug id: %w", err)
+	}
+	if _, err := repository.pool.Exec(ctx, `
+		UPDATE native_debug_file_blobs b SET last_used_at = now()
+		FROM native_debug_file_refs r
+		WHERE r.project_id = $1 AND r.debug_id = $2 AND b.project_id = r.project_id AND b.id = r.blob_id
+	`, projectID, parsed); err != nil {
+		return fmt.Errorf("mark native debug file used: %w", err)
+	}
+	return nil
 }

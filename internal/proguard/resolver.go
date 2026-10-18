@@ -10,10 +10,12 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ramilS/faultline/internal/sourcemap"
+	"github.com/ramilS/faultline/internal/usage"
 )
 
 const (
@@ -31,13 +33,14 @@ type resolver struct {
 	repo     Repository
 	fallback sourcemap.Resolver
 	cache    *mappingCache
+	used     *usage.Throttle
 }
 
 // NewResolver builds a read-time resolver that retraces the JVM exceptions of
 // events naming ProGuard/R8 mappings in debug_meta, and hands every other
 // event, and every event whose mappings are not stored, to fallback unchanged.
 func NewResolver(repo Repository, fallback sourcemap.Resolver) sourcemap.Resolver {
-	return &resolver{repo: repo, fallback: fallback, cache: newMappingCache(maxCachedMappings)}
+	return &resolver{repo: repo, fallback: fallback, cache: newMappingCache(maxCachedMappings), used: usage.NewThrottle(usage.Interval, time.Now)}
 }
 
 type payloadFrame struct {
@@ -109,7 +112,8 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 // frames mention, from the cache when it already covers them. A mapping that
 // was never uploaded is skipped silently, since an event can name a build
 // nobody uploaded; a mapping that is stored but unreadable is a failure the
-// caller should report. Neither is cached.
+// caller should report. Neither is cached. Every mapping found counts as used:
+// a crash of that build arrived, so retention must keep it.
 func (r *resolver) load(ctx context.Context, projectID int64, mappingUUIDs []string, classes map[string]struct{}) ([]*Mapping, []error) {
 	var (
 		mappings []*Mapping
@@ -117,31 +121,56 @@ func (r *resolver) load(ctx context.Context, projectID int64, mappingUUIDs []str
 	)
 	for _, mappingUUID := range mappingUUIDs {
 		key := strconv.FormatInt(projectID, 10) + "/" + mappingUUID
-		if mapping, ok := r.cache.get(key, classes); ok {
-			mappings = append(mappings, mapping)
-			continue
-		}
-		stored, err := r.repo.Find(ctx, projectID, mappingUUID)
+		mapping, err := r.mappingFor(ctx, projectID, mappingUUID, key, classes)
 		if errors.Is(err, ErrNotFound) {
 			continue
 		}
 		if err != nil {
-			failures = append(failures, fmt.Errorf("find proguard mapping %s: %w", mappingUUID, err))
+			failures = append(failures, err)
 			continue
 		}
-		covered := r.cache.coverageFor(key, classes)
-		mapping, err := parseStored(stored, func(obfuscated string) bool {
-			_, ok := covered[obfuscated]
-			return ok
-		})
-		if err != nil {
-			failures = append(failures, fmt.Errorf("read proguard mapping %s: %w", mappingUUID, err))
-			continue
-		}
-		r.cache.put(key, mapping, covered)
 		mappings = append(mappings, mapping)
+		if err := r.recordUse(ctx, projectID, mappingUUID, key); err != nil {
+			failures = append(failures, err)
+		}
 	}
 	return mappings, failures
+}
+
+func (r *resolver) mappingFor(ctx context.Context, projectID int64, mappingUUID, key string, classes map[string]struct{}) (*Mapping, error) {
+	if mapping, ok := r.cache.get(key, classes); ok {
+		return mapping, nil
+	}
+	stored, err := r.repo.Find(ctx, projectID, mappingUUID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find proguard mapping %s: %w", mappingUUID, err)
+	}
+	covered := r.cache.coverageFor(key, classes)
+	mapping, err := parseStored(stored, func(obfuscated string) bool {
+		_, ok := covered[obfuscated]
+		return ok
+	})
+	if err != nil {
+		return nil, fmt.Errorf("read proguard mapping %s: %w", mappingUUID, err)
+	}
+	r.cache.put(key, mapping, covered)
+	return mapping, nil
+}
+
+// recordUse tells the repository about a use at most once per usage.Interval;
+// a failed write is reported and retried on the next use.
+func (r *resolver) recordUse(ctx context.Context, projectID int64, mappingUUID, key string) error {
+	if !r.used.Due(key) {
+		return nil
+	}
+	if err := r.repo.MarkUsed(ctx, projectID, mappingUUID); err != nil {
+		r.used.Forget(key)
+		return fmt.Errorf("mark proguard mapping %s used: %w", mappingUUID, err)
+	}
+	return nil
 }
 
 // parseStored decompresses and parses a stored mapping. UncompressedBytes was

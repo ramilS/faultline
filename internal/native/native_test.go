@@ -8,8 +8,10 @@ import (
 	"errors"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/ramilS/faultline/internal/sourcemap"
+	"github.com/ramilS/faultline/internal/usage"
 )
 
 func TestDecodeUploadThinAndUniversal(t *testing.T) {
@@ -54,6 +56,7 @@ func (r memoryRepository) Put(context.Context, int64, Upload) error { return nil
 func (r memoryRepository) Find(context.Context, int64, string) (Stored, error) {
 	return r.stored, r.err
 }
+func (memoryRepository) MarkUsed(context.Context, int64, string) error { return nil }
 
 type fallbackResolver struct {
 	called bool
@@ -126,12 +129,19 @@ func TestResolverPreservesUnresolvedFramesAndReportsRepositoryFailures(t *testin
 
 type countingRepository struct {
 	memoryRepository
-	finds int
+	finds   int
+	marked  []string
+	markErr error
 }
 
 func (r *countingRepository) Find(ctx context.Context, projectID int64, debugID string) (Stored, error) {
 	r.finds++
 	return r.memoryRepository.Find(ctx, projectID, debugID)
+}
+
+func (r *countingRepository) MarkUsed(_ context.Context, _ int64, debugID string) error {
+	r.marked = append(r.marked, debugID)
+	return r.markErr
 }
 
 // Find returns the whole compressed debug file, so a stack whose frames share
@@ -299,4 +309,44 @@ func minimalFat(first, second []byte) []byte {
 
 func decodeBytes(body []byte) (Upload, error) {
 	return DecodeUpload(bytes.NewReader(body), int64(len(body)))
+}
+
+type fakeClock struct{ at time.Time }
+
+func (c *fakeClock) now() time.Time { return c.at }
+
+// Retention keeps the debug files crashes still need, so an image served from
+// the cache must keep counting as used, without a write for every event.
+func TestResolverRecordsAnImageAsUsedOncePerInterval(t *testing.T) {
+	upload, err := decodeBytes(minimalMachO(macho.CpuArm64, [16]byte{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &countingRepository{stored: Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}}
+	clock := &fakeClock{at: time.Unix(1_000, 0)}
+	r := NewResolver(repository, &fallbackResolver{}).(*resolver)
+	r.used = usage.NewThrottle(usage.Interval, clock.now)
+	input := sourcemap.EventInput{ProjectID: 7, Payload: []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)}
+
+	for range 2 {
+		if _, err := r.Resolve(t.Context(), input); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if len(repository.marked) != 1 {
+		t.Fatalf("marked %v within one interval, want once", repository.marked)
+	}
+	clock.at = clock.at.Add(usage.Interval)
+	repository.markErr = errors.New("database offline")
+	got, err := r.Resolve(t.Context(), input)
+	if len(repository.marked) != 2 || repository.finds != 1 {
+		t.Fatalf("marked %v after %d finds, want a cached image marked again", repository.marked, repository.finds)
+	}
+	if err == nil || !strings.Contains(err.Error(), "database offline") || got == nil || got.Frames[0].Original == nil {
+		t.Fatalf("resolved=%#v err=%v, want it symbolicated and the failed record reported", got, err)
+	}
+	repository.markErr = nil
+	if _, err := r.Resolve(t.Context(), input); err != nil || len(repository.marked) != 3 {
+		t.Fatalf("marked %v err=%v, want the failed record retried", repository.marked, err)
+	}
 }

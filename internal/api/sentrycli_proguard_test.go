@@ -58,6 +58,8 @@ func (*fakeNativeDebugFiles) Find(context.Context, int64, string) (nativedebug.S
 	return nativedebug.Stored{}, nativedebug.ErrNotFound
 }
 
+func (*fakeNativeDebugFiles) MarkUsed(context.Context, int64, string) error { return nil }
+
 func (f *fakeProguardMappings) Put(_ context.Context, _ int64, mappingUUID string, upload proguard.DecodedUpload) (bool, error) {
 	f.puts++
 	if f.putErr != nil {
@@ -79,6 +81,8 @@ func (f *fakeProguardMappings) Put(_ context.Context, _ int64, mappingUUID strin
 func (f *fakeProguardMappings) Find(context.Context, int64, string) (proguard.Stored, error) {
 	return proguard.Stored{}, proguard.ErrNotFound
 }
+
+func (*fakeProguardMappings) MarkUsed(context.Context, int64, string) error { return nil }
 
 func recordedRequest(t *testing.T, name string) *http.Request {
 	t.Helper()

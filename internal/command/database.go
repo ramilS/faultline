@@ -113,7 +113,10 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		ReportError: reportError,
 	})
 	projectSettings := storagepostgres.NewProjectSettingsStore(pool)
-	artifactQuota := storagepostgres.WithArtifactQuota(configuration.ArtifactQuotaBytes)
+	artifactLimits := []storagepostgres.ArtifactStoreOption{
+		storagepostgres.WithArtifactQuota(configuration.ArtifactQuotaBytes),
+		storagepostgres.WithDebugFileRetention(configuration.DebugFileRetention),
+	}
 	return &runtimeDatabase{
 		Pool:                 pool,
 		Users:                authRepositories.Users,
@@ -125,9 +128,9 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		Access:               storagepostgres.NewAccessRepository(pool),
 		ArtifactTokens:       storagepostgres.NewArtifactTokenRepository(pool),
 		Groups:               storagepostgres.NewGroupRepository(pool),
-		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactQuota),
-		Proguard:             storagepostgres.NewProguardMappingRepository(pool, artifactQuota),
-		NativeDebug:          storagepostgres.NewNativeDebugFileRepository(pool, artifactQuota),
+		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactLimits...),
+		Proguard:             storagepostgres.NewProguardMappingRepository(pool, artifactLimits...),
+		NativeDebug:          storagepostgres.NewNativeDebugFileRepository(pool, artifactLimits...),
 		UploadChunks:         storagepostgres.NewUploadChunkStore(pool),
 		Releases:             storagepostgres.NewReleaseStore(pool),
 		GroupingRules:        groupingRules,

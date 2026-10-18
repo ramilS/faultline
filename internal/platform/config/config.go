@@ -3,6 +3,7 @@ package config
 
 import (
 	"fmt"
+	"math"
 	"net/url"
 	"os"
 	"strconv"
@@ -23,6 +24,10 @@ const (
 	defaultSpillFsyncInterval = 50 * time.Millisecond
 	defaultSpillMaxBytes      = int64(2 << 30)
 	defaultArtifactQuotaBytes = int64(1 << 30)
+	// defaultDebugFileRetention keeps 30 mappings and 30 native debug files a
+	// project: at a mobile app's ~7MB stored mapping and ~12MB dSYM that is
+	// about half of the default quota.
+	defaultDebugFileRetention = 30
 )
 
 // DatabaseConfig controls PostgreSQL connectivity and pool lifecycle.
@@ -33,9 +38,13 @@ type DatabaseConfig struct {
 	MaxConnLifetime   time.Duration
 	MaxConnIdleTime   time.Duration
 	HealthCheckPeriod time.Duration
-	// ArtifactQuotaBytes caps the uncompressed size of the source maps and
+	// ArtifactQuotaBytes caps the stored (compressed) size of the source maps and
 	// ProGuard/R8 mappings one project may store. Zero means no cap.
 	ArtifactQuotaBytes int64
+	// DebugFileRetention is how many of its most recently used ProGuard/R8
+	// mappings, and separately native debug files, a project keeps; older ones
+	// are deleted as new ones arrive. Zero keeps everything.
+	DebugFileRetention int
 }
 
 // Validate reports whether database holds the invariants Load already
@@ -65,6 +74,9 @@ func (database DatabaseConfig) Validate() error {
 	}
 	if database.ArtifactQuotaBytes < 0 {
 		return fmt.Errorf("artifact quota must not be negative")
+	}
+	if database.DebugFileRetention < 0 {
+		return fmt.Errorf("debug file retention must not be negative")
 	}
 	return nil
 }
@@ -166,6 +178,13 @@ func Load() (Config, error) {
 	if artifactQuota < 0 {
 		return Config{}, fmt.Errorf("FAULTLINE_ARTIFACT_QUOTA_BYTES must not be negative")
 	}
+	debugFileRetention, err := int64Value("FAULTLINE_DEBUG_FILE_RETENTION", defaultDebugFileRetention)
+	if err != nil {
+		return Config{}, err
+	}
+	if debugFileRetention < 0 || debugFileRetention > math.MaxInt32 {
+		return Config{}, fmt.Errorf("FAULTLINE_DEBUG_FILE_RETENTION must be between 0 and %d", math.MaxInt32)
+	}
 
 	spillEnabled, err := boolValue("FAULTLINE_SPILL_ENABLED", false)
 	if err != nil {
@@ -227,6 +246,7 @@ func Load() (Config, error) {
 			MaxConnIdleTime:    maxIdleTime,
 			HealthCheckPeriod:  healthPeriod,
 			ArtifactQuotaBytes: artifactQuota,
+			DebugFileRetention: int(debugFileRetention),
 		},
 		Durability: DurabilityConfig{
 			SpillEnabled:       spillEnabled,

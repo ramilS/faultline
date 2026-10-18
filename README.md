@@ -60,7 +60,7 @@ Create the schema and the first account. Neither happens automatically:
 
 ```sh
 docker compose exec faultline faultline migrate up
-docker compose exec faultline faultline migrate version   # expect: 24 clean
+docker compose exec faultline faultline migrate version   # expect: 25 clean
 docker compose exec faultline faultline user create --email admin@example.com --name "Administrator"
 ```
 
@@ -145,12 +145,20 @@ a Kotlin frame can show a `.java` name.
 
 A mapping is capped at 200MB uncompressed and, once uploaded, is immutable: a
 second upload naming the same mapping UUID with different content is rejected.
-There is no way to delete a stored mapping short of direct SQL.
 
-Each project may store 1 GiB (uncompressed) of source maps, mappings, and native debug files
-combined; an upload that would exceed it is refused with `413`. Re-uploading
-content the project already holds always succeeds. Set
-`FAULTLINE_ARTIFACT_QUOTA_BYTES` to change the cap, or to `0` to remove it.
+Every release build uploads a mapping under a new UUID, local builds included,
+so each project keeps only its 30 most recently used mappings, and separately
+its 30 most recently used native debug files; older ones are deleted as new
+ones arrive. A crash retraced or symbolicated with a file counts as a use, as
+does re-uploading it, so the build your users run outlives a run of local
+builds. Set `FAULTLINE_DEBUG_FILE_RETENTION` to change the count, or to `0` to
+keep everything.
+
+Each project may store 1 GiB of source maps, mappings, and native debug files
+combined, counted as stored (gzip-compressed) bytes; an upload that would
+exceed it is refused with `413`. Re-uploading content the project already holds
+always succeeds. Set `FAULTLINE_ARTIFACT_QUOTA_BYTES` to change the cap, or to
+`0` to remove it.
 
 ## Apple native symbols
 
@@ -172,6 +180,7 @@ source file, and line from DWARF while leaving the stored event unchanged.
 
 Uploads are project-scoped and immutable by UUID. Re-uploading identical
 content is a no-op; different content under an occupied UUID is rejected.
+Retention and the quota apply as for [ProGuard mappings](#android-readable-stack-traces).
 Faultline does not provide stack walking, source bundles, BCSymbolMap handling,
 Apple system symbols, or the legacy `upload-dsym` endpoint.
 

@@ -10,10 +10,12 @@ import (
 	"strconv"
 	"strings"
 	"sync"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/ramilS/faultline/internal/sourcemap"
+	"github.com/ramilS/faultline/internal/usage"
 )
 
 const (
@@ -52,10 +54,11 @@ type resolver struct {
 	repo     Repository
 	fallback sourcemap.Resolver
 	cache    objectCache
+	used     *usage.Throttle
 }
 
 func NewResolver(repo Repository, fallback sourcemap.Resolver) sourcemap.Resolver {
-	return &resolver{repo: repo, fallback: fallback, cache: objectCache{m: make(map[string]*parsedObject)}}
+	return &resolver{repo: repo, fallback: fallback, cache: objectCache{m: make(map[string]*parsedObject)}, used: usage.NewThrottle(usage.Interval, time.Now)}
 }
 
 type payloadFrame struct {
@@ -131,7 +134,12 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 					exception.Frames = append(exception.Frames, frame)
 					continue
 				}
-				object, err := r.objectFor(ctx, in.ProjectID, image.DebugID, looked)
+				object, first, err := r.objectFor(ctx, in.ProjectID, image.DebugID, looked)
+				if err == nil && first {
+					if err := r.recordUse(ctx, in.ProjectID, image.DebugID); err != nil && firstFailure == nil {
+						firstFailure = err
+					}
+				}
 				if errors.Is(err, ErrNotFound) {
 					exception.Frames = append(exception.Frames, frame)
 					continue
@@ -210,14 +218,30 @@ func imageFor(images []imageRange, address uint64) (imageRange, bool) {
 }
 
 // objectFor resolves an image once per event; looked holds what earlier frames
-// of the same event already found.
-func (r *resolver) objectFor(ctx context.Context, projectID int64, debugID string, looked map[string]imageLookup) (*parsedObject, error) {
+// of the same event already found. first reports that this call did the
+// lookup, so the caller records the use once per event.
+func (r *resolver) objectFor(ctx context.Context, projectID int64, debugID string, looked map[string]imageLookup) (object *parsedObject, first bool, err error) {
 	if found, ok := looked[debugID]; ok {
-		return found.object, found.err
+		return found.object, false, found.err
 	}
-	object, err := r.lookup(ctx, projectID, debugID)
+	object, err = r.lookup(ctx, projectID, debugID)
 	looked[debugID] = imageLookup{object: object, err: err}
-	return object, err
+	return object, true, err
+}
+
+// recordUse tells the repository about a use at most once per usage.Interval,
+// so retention keeps debug files that crashes still need; a failed write is
+// reported and retried on the next use.
+func (r *resolver) recordUse(ctx context.Context, projectID int64, debugID string) error {
+	key := fmt.Sprintf("%d/%s", projectID, debugID)
+	if !r.used.Due(key) {
+		return nil
+	}
+	if err := r.repo.MarkUsed(ctx, projectID, debugID); err != nil {
+		r.used.Forget(key)
+		return fmt.Errorf("mark native debug file %s used: %w", debugID, err)
+	}
+	return nil
 }
 
 // lookup checks the parsed cache before the repository: Find returns the whole

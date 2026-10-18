@@ -45,4 +45,8 @@ type Stored struct {
 type Repository interface {
 	Put(context.Context, int64, Upload) error
 	Find(context.Context, int64, string) (Stored, error)
+	// MarkUsed records that a crash was just symbolicated with the debug file
+	// holding this debug id, which keeps it from being evicted ahead of files
+	// nobody needs.
+	MarkUsed(ctx context.Context, projectID int64, debugID string) error
 }

@@ -516,6 +516,8 @@ func (*proguardMappingRepositoryStub) Find(context.Context, int64, string) (prog
 	return proguard.Stored{}, proguard.ErrNotFound
 }
 
+func (*proguardMappingRepositoryStub) MarkUsed(context.Context, int64, string) error { return nil }
+
 // TestRunWiresProguardUploadIntoHTTPApplication proves database.Proguard, set by
 // assembleDatabase in production, actually reaches the assembled HTTP
 // application. Every other test in this file injects assembleDatabase and

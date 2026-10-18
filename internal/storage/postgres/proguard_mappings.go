@@ -14,21 +14,22 @@ import (
 )
 
 type proguardMappingRepository struct {
-	pool  *pgxpool.Pool
-	quota artifactQuota
+	pool   *pgxpool.Pool
+	limits artifactLimits
 }
 
 var _ proguard.Repository = (*proguardMappingRepository)(nil)
 
 // NewProguardMappingRepository returns a ProGuard/R8 mapping adapter backed by pool.
 func NewProguardMappingRepository(pool *pgxpool.Pool, options ...ArtifactStoreOption) proguard.Repository {
-	return &proguardMappingRepository{pool: pool, quota: newArtifactQuota(options)}
+	return &proguardMappingRepository{pool: pool, limits: newArtifactLimits(options)}
 }
 
-// Put stores a mapping once per project and UUID. The no-op UPDATE makes
-// RETURNING yield the existing row's digest on conflict, so identical bytes
-// report created=false and different bytes under a taken UUID are refused,
-// keeping a stored mapping immutable. A new mapping that would take the project
+// Put stores a mapping once per project and UUID. The UPDATE on conflict makes
+// RETURNING yield the existing row's digest, so identical bytes report
+// created=false and different bytes under a taken UUID are refused, keeping a
+// stored mapping immutable; a repeated upload counts as a use. A new mapping
+// evicts the least recently used ones beyond the project's retention. A new mapping that would take the project
 // past its quota fails with storage.ErrArtifactQuotaExceeded.
 func (repository *proguardMappingRepository) Put(ctx context.Context, projectID int64, mappingUUID string, upload proguard.DecodedUpload) (bool, error) {
 	parsed, err := uuid.Parse(mappingUUID)
@@ -40,7 +41,7 @@ func (repository *proguardMappingRepository) Put(ctx context.Context, projectID 
 		return false, fmt.Errorf("begin proguard mapping put: %w", err)
 	}
 	defer tx.Rollback(ctx)
-	if err := repository.quota.lock(ctx, tx, projectID); err != nil {
+	if err := repository.limits.lock(ctx, tx, projectID); err != nil {
 		return false, err
 	}
 	var (
@@ -51,7 +52,7 @@ func (repository *proguardMappingRepository) Put(ctx context.Context, projectID 
 		INSERT INTO proguard_mappings (project_id, mapping_uuid, content_sha256, compressed_mapping, uncompressed_bytes)
 		VALUES ($1, $2, $3, $4, $5)
 		ON CONFLICT (project_id, mapping_uuid)
-		DO UPDATE SET content_sha256 = proguard_mappings.content_sha256
+		DO UPDATE SET last_used_at = now()
 		RETURNING content_sha256, (xmax = 0)
 	`, projectID, parsed, upload.SHA256[:], upload.Compressed, upload.UncompressedBytes).Scan(&storedHash, &created)
 	if err != nil {
@@ -61,7 +62,10 @@ func (repository *proguardMappingRepository) Put(ctx context.Context, projectID 
 		return false, fmt.Errorf("put proguard mapping: %w", proguard.ErrConflict)
 	}
 	if created {
-		if err := repository.quota.enforce(ctx, tx, projectID); err != nil {
+		if err := repository.limits.evict(ctx, tx, projectID, evictProguardMappings); err != nil {
+			return false, fmt.Errorf("put proguard mapping: %w", err)
+		}
+		if err := repository.limits.enforce(ctx, tx, projectID); err != nil {
 			return false, fmt.Errorf("put proguard mapping: %w", err)
 		}
 	}
@@ -93,4 +97,19 @@ func (repository *proguardMappingRepository) Find(ctx context.Context, projectID
 		return proguard.Stored{}, fmt.Errorf("find proguard mapping: %w", err)
 	}
 	return stored, nil
+}
+
+// MarkUsed moves a mapping to the front of the project's retention order.
+func (repository *proguardMappingRepository) MarkUsed(ctx context.Context, projectID int64, mappingUUID string) error {
+	parsed, err := uuid.Parse(mappingUUID)
+	if err != nil {
+		return fmt.Errorf("mark proguard mapping used: invalid uuid: %w", err)
+	}
+	if _, err := repository.pool.Exec(ctx, `
+		UPDATE proguard_mappings SET last_used_at = now()
+		WHERE project_id = $1 AND mapping_uuid = $2
+	`, projectID, parsed); err != nil {
+		return fmt.Errorf("mark proguard mapping used: %w", err)
+	}
+	return nil
 }
