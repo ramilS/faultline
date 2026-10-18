@@ -30,7 +30,7 @@ func TestUnpackReadsARealSentryCLIBundle(t *testing.T) {
 	if err != nil {
 		t.Fatalf("read fixture: %v", err)
 	}
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -62,7 +62,7 @@ func TestUnpackDiscardsNonSourceMapEntries(t *testing.T) {
 		"files/_/_/app.js":     "console.log(1)",
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -84,7 +84,7 @@ func TestUnpackKeepsEntriesWithoutDebugID(t *testing.T) {
 		"files/_/_/app.js.map": `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA"}`,
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -115,7 +115,7 @@ func TestUnpackJoinsMapToItsMinifiedSourceWithoutDebugIDs(t *testing.T) {
 		"files/_/_/assets/app.js":     "console.log(1)",
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -142,7 +142,7 @@ func TestUnpackLeavesGeneratedURLEmptyWhenNoEntryNamesTheMap(t *testing.T) {
 		"files/_/_/other.js":   "console.log(1)",
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -164,7 +164,7 @@ func TestUnpackIgnoresTopLevelBundleDebugID(t *testing.T) {
 		"files/_/_/app.js.map": `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA"}`,
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -278,7 +278,7 @@ func TestUnpackKeepsEntriesWithADebugIDAndNoURL(t *testing.T) {
 		"files/_/_/app.js.map": `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA"}`,
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}
@@ -549,7 +549,7 @@ func TestUnpackRejectsAggregateDecompressedSizeAcrossEntries(t *testing.T) {
 // specific guard that fired rather than merely that Unpack failed.
 func errUnpack(t *testing.T, zipped []byte) error {
 	t.Helper()
-	_, err := sentrycli.Unpack(zipped)
+	_, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	return err
 }
 
@@ -599,7 +599,7 @@ func TestUnpackRejectsAMalformedDebugID(t *testing.T) {
 		"files/_/_/app.js.map": `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA"}`,
 	})
 
-	_, err := sentrycli.Unpack(zipped)
+	_, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if !errors.Is(err, sentrycli.ErrInvalidBundle) {
 		t.Fatalf("error = %v, want ErrInvalidBundle", err)
 	}
@@ -617,7 +617,7 @@ func TestUnpackAcceptsAnUnhyphenatedDebugID(t *testing.T) {
 		"files/_/_/app.js.map": `{"version":3,"sources":["a.ts"],"names":[],"mappings":"AAAA"}`,
 	})
 
-	files, err := sentrycli.Unpack(zipped)
+	files, err := sentrycli.Unpack(bytes.NewReader(zipped), int64(len(zipped)))
 	if err != nil {
 		t.Fatalf("unpack: %v", err)
 	}

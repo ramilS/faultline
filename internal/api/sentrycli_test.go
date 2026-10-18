@@ -676,11 +676,11 @@ func TestUploadChunksEnforcesChunksPerRequestLimit(t *testing.T) {
 	}
 }
 
-// sentrycli.Concat sums a checksum's staged body length once
+// sentrycli.Assemble reads a checksum's staged body once
 // per occurrence in chunks[], so naming one legitimately staged small chunk
 // more times than a maximum-size bundle could ever require must be rejected
-// before Load/Concat ever run — otherwise a ~1 MiB request can force an
-// allocation far beyond any file this server would accept. The cap
+// before Load/Assemble ever run — otherwise a ~1 MiB request can make the
+// server hash and unpack a file far beyond any it would accept. The cap
 // (MaxFileSize/ChunkSize = 25 at today's advertised values) is checked
 // against len(chunks) alone, so this never touches storage.
 func TestAssembleRejectsTooManyChunksInOneRequest(t *testing.T) {
@@ -694,14 +694,14 @@ func TestAssembleRejectsTooManyChunksInOneRequest(t *testing.T) {
 
 	// One more entry than the cap allows, all naming the same staged chunk —
 	// exactly the shape that would otherwise multiply into an unbounded
-	// allocation in sentrycli.Concat.
+	// file in sentrycli.Assemble.
 	chunkList := make([]string, maxChunks+1)
 	for i := range chunkList {
 		chunkList[i] = checksum.String()
 	}
 	// The checksum field is deliberately wrong: if this cap were absent, the
-	// request would proceed to Concat and fail there instead (a different
-	// error, proving Concat ran) rather than being rejected up front. See
+	// request would proceed to Assemble and fail there instead (a different
+	// error, proving Assemble ran) rather than being rejected up front. See
 	// the fix report for the paired RED capture.
 	wrongTotal := sentrycli.ComputeChecksum([]byte("not what would actually be assembled"))
 
@@ -727,7 +727,7 @@ func TestAssembleRejectsTooManyChunksInOneRequest(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if decoded.Error != "too many chunks in assemble request" {
-		t.Fatalf("error = %q, want the count rejection (proves the cap ran before Concat, not the checksum-mismatch error Concat itself would produce)", decoded.Error)
+		t.Fatalf("error = %q, want the count rejection (proves the cap ran before Assemble, not the checksum-mismatch error Assemble itself would produce)", decoded.Error)
 	}
 	if fixture.sourceMaps.bundleCalls != 0 {
 		t.Fatalf("bundle writes = %d, want 0", fixture.sourceMaps.bundleCalls)
@@ -736,7 +736,7 @@ func TestAssembleRejectsTooManyChunksInOneRequest(t *testing.T) {
 
 // A chunks[] list within the count cap but naming the same checksum twice
 // must also be rejected — the count cap alone does not stop a
-// short list from still multiplying a chunk's contribution to Concat's total.
+// short list from still multiplying a chunk's contribution to Assemble's total.
 func TestAssembleRejectsDuplicateChunkChecksums(t *testing.T) {
 	handler, fixture := newSentryCLIFixture(t)
 	chunkContent := []byte("a small legitimately staged chunk")
@@ -744,11 +744,11 @@ func TestAssembleRejectsDuplicateChunkChecksums(t *testing.T) {
 	fixture.chunks.staged[checksum] = chunkContent
 
 	// The "checksum" (total) field is deliberately wrong. If it matched the
-	// doubled content, a pre-fix run would let Concat succeed and only fail
+	// doubled content, a pre-fix run would let Assemble succeed and only fail
 	// later at Unpack, landing on the same 400 status for an unrelated
 	// reason and making this test pass whether or not duplicates were
 	// rejected. A mismatched total instead makes the two code paths produce
-	// distinguishable messages: reaching Concat (pre-fix) fails with a
+	// distinguishable messages: reaching Assemble (pre-fix) fails with a
 	// checksum-mismatch message, while rejecting the duplicate up front
 	// (post-fix) never gets that far.
 	wrongTotal := sentrycli.ComputeChecksum([]byte("not the doubled content"))
@@ -774,7 +774,7 @@ func TestAssembleRejectsDuplicateChunkChecksums(t *testing.T) {
 		t.Fatalf("decode: %v", err)
 	}
 	if decoded.Error != "duplicate chunk checksum in assemble request" {
-		t.Fatalf("error = %q, want the duplicate rejection (proves it ran before Concat, not the checksum-mismatch error Concat itself would produce)", decoded.Error)
+		t.Fatalf("error = %q, want the duplicate rejection (proves it ran before Assemble, not the checksum-mismatch error Assemble itself would produce)", decoded.Error)
 	}
 	if fixture.sourceMaps.bundleCalls != 0 {
 		t.Fatalf("bundle writes = %d, want 0", fixture.sourceMaps.bundleCalls)

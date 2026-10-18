@@ -2,7 +2,6 @@ package sentrycli
 
 import (
 	"archive/zip"
-	"bytes"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -86,8 +85,8 @@ type bundleManifest struct {
 // between a map and the generated file it describes, which is the address the
 // resolver looks maps up by. See generatedURLIndex. The manifest's top-level
 // debug_id addresses the bundle itself, never a file, and is not read here.
-func Unpack(zipped []byte) ([]BundleFile, error) {
-	archive, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped)))
+func Unpack(zipped io.ReaderAt, size int64) ([]BundleFile, error) {
+	archive, err := zip.NewReader(zipped, size)
 	if err != nil {
 		return nil, fmt.Errorf("%w: open zip: %w", ErrInvalidBundle, err)
 	}

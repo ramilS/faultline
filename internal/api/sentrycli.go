@@ -284,13 +284,12 @@ type assembleResponse struct {
 // background workers.
 //
 // The work is bounded above by maxFileSize, but that bound is enforced here,
-// not merely advertised: sentrycli.Concat sums a checksum's body length once
+// not merely advertised: sentrycli.Assemble sums a checksum's body length once
 // per occurrence in chunks[], so a request naming one legitimately-staged
-// small chunk many thousands of times would otherwise multiply it into an
-// allocation far past any file this server could ever have accepted, with
-// nothing upstream to stop it — an out-of-memory fatal error (not a
-// recoverable panic) reachable with any valid artifact token and a ~1 MiB
-// request. parseAssembleChunks below is what actually enforces the bound; see
+// small chunk many thousands of times would otherwise multiply it into a
+// file far past any this server could ever have accepted, which the handler
+// would then hash and unpack, with nothing upstream to stop it — reachable
+// with any valid artifact token and a ~1 MiB request. parseAssembleChunks below is what actually enforces the bound; see
 // its doc comment.
 func (h *SentryCLIHandler) AssembleBundle(w http.ResponseWriter, r *http.Request) {
 	token, ok := h.authenticate(w, r)
@@ -337,12 +336,12 @@ func (h *SentryCLIHandler) AssembleBundle(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	assembled, err := sentrycli.Concat(wanted, staged, total)
+	assembled, err := sentrycli.Assemble(wanted, staged, total)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "assembled bundle does not match its checksum")
 		return
 	}
-	files, err := sentrycli.Unpack(assembled)
+	files, err := sentrycli.Unpack(assembled, assembled.Size())
 	if err != nil {
 		h.handleUnpackError(w, err)
 		return
@@ -418,18 +417,17 @@ func (h *SentryCLIHandler) ownsEveryProject(w http.ResponseWriter, r *http.Reque
 }
 
 // parseAssembleChunks validates the chunks[] list before anything in it
-// touches storage or sentrycli.Concat. Two checks, both load-bearing:
+// touches storage or sentrycli.Assemble. Two checks, both load-bearing:
 //
 //   - The count cannot exceed MaxFileSize/ChunkSize (25 at today's advertised
 //     values) — not an invented number, but exactly how many maximum-size
 //     chunks the largest bundle this server accepts could ever be split into.
 //     Any more is already an attack, not a valid upload.
-//   - No checksum may repeat. sentrycli.Concat sums a checksum's staged body
+//   - No checksum may repeat. sentrycli.Assemble sums a checksum's staged body
 //     length once per occurrence in order — a list naming one legitimately
 //     staged small chunk thousands of times (still under the count cap only
 //     if the cap were absent, which is exactly why the count cap above must
-//     run first) multiplies it into an allocation with nothing left to bound
-//     it. A byte-identical repeat can in principle occur in real content, but
+//     run first) multiplies it into a file with nothing left to bound it. A byte-identical repeat can in principle occur in real content, but
 //     rejecting that vanishingly rare case is the trade this sum-per-occurrence
 //     format forces; there is no way to distinguish it from the attack from
 //     the request alone.
