@@ -14,7 +14,7 @@ import (
 
 func TestDecodeUploadThinAndUniversal(t *testing.T) {
 	first := minimalMachO(macho.CpuArm64, [16]byte{1})
-	upload, err := DecodeUpload(first)
+	upload, err := decodeBytes(first)
 	if err != nil {
 		t.Fatalf("DecodeUpload(thin): %v", err)
 	}
@@ -24,7 +24,7 @@ func TestDecodeUploadThinAndUniversal(t *testing.T) {
 
 	second := minimalMachO(macho.CpuAmd64, [16]byte{2})
 	fat := minimalFat(first, second)
-	upload, err = DecodeUpload(fat)
+	upload, err = decodeBytes(fat)
 	if err != nil {
 		t.Fatalf("DecodeUpload(fat): %v", err)
 	}
@@ -34,13 +34,13 @@ func TestDecodeUploadThinAndUniversal(t *testing.T) {
 }
 
 func TestDecodeUploadRejectsMalformedAndNoDWARF(t *testing.T) {
-	if _, err := DecodeUpload([]byte("not macho")); !errors.Is(err, ErrInvalidDebugFile) {
+	if _, err := decodeBytes([]byte("not macho")); !errors.Is(err, ErrInvalidDebugFile) {
 		t.Fatalf("malformed error = %v", err)
 	}
 	body := minimalMachO(macho.CpuArm64, [16]byte{1})
 	// Truncate a declared DWARF section while leaving the Mach-O headers valid.
 	body = body[:len(body)-1]
-	if _, err := DecodeUpload(body); !errors.Is(err, ErrInvalidDebugFile) {
+	if _, err := decodeBytes(body); !errors.Is(err, ErrInvalidDebugFile) {
 		t.Fatalf("no-DWARF error = %v", err)
 	}
 }
@@ -66,7 +66,7 @@ func (r *fallbackResolver) Resolve(context.Context, sourcemap.EventInput) (*sour
 }
 
 func TestResolverTranslatesImageAddressAndPreservesFrameFlags(t *testing.T) {
-	upload, err := DecodeUpload(minimalMachO(macho.CpuArm64, [16]byte{1}))
+	upload, err := decodeBytes(minimalMachO(macho.CpuArm64, [16]byte{1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -101,7 +101,7 @@ func TestResolverFallsBackForUnknownOrMalformedImages(t *testing.T) {
 }
 
 func TestResolverPreservesUnresolvedFramesAndReportsRepositoryFailures(t *testing.T) {
-	upload, err := DecodeUpload(minimalMachO(macho.CpuArm64, [16]byte{1}))
+	upload, err := decodeBytes(minimalMachO(macho.CpuArm64, [16]byte{1}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -248,4 +248,8 @@ func minimalFat(first, second []byte) []byte {
 	buf.Write(first)
 	buf.Write(second)
 	return buf.Bytes()
+}
+
+func decodeBytes(body []byte) (Upload, error) {
+	return DecodeUpload(bytes.NewReader(body), int64(len(body)))
 }

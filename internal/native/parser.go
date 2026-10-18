@@ -15,12 +15,13 @@ import (
 const lcUUID = 0x1b
 
 // DecodeUpload validates every architecture and prepares a single compressed
-// blob. Filenames are deliberately not involved in debug-id extraction.
-func DecodeUpload(body []byte) (Upload, error) {
-	if len(body) == 0 {
+// blob. Filenames are deliberately not involved in debug-id extraction. body is
+// read in place rather than copied: a dSYM may be hundreds of megabytes.
+func DecodeUpload(body io.ReaderAt, size int64) (Upload, error) {
+	if size == 0 {
 		return Upload{}, ErrInvalidDebugFile
 	}
-	if len(body) > MaxDecodedBytes {
+	if size > MaxDecodedBytes {
 		return Upload{}, ErrTooLarge
 	}
 	objects, err := inspect(body)
@@ -29,17 +30,20 @@ func DecodeUpload(body []byte) (Upload, error) {
 	}
 	var compressed bytes.Buffer
 	zw := gzip.NewWriter(&compressed)
-	if _, err := zw.Write(body); err != nil {
+	digest := sha256.New()
+	if _, err := io.Copy(io.MultiWriter(zw, digest), io.NewSectionReader(body, 0, size)); err != nil {
 		return Upload{}, fmt.Errorf("compress native debug file: %w", err)
 	}
 	if err := zw.Close(); err != nil {
 		return Upload{}, fmt.Errorf("compress native debug file: %w", err)
 	}
-	return Upload{Compressed: compressed.Bytes(), ContentSHA256: sha256.Sum256(body), UncompressedBytes: int64(len(body)), Objects: objects}, nil
+	upload := Upload{Compressed: compressed.Bytes(), UncompressedBytes: size, Objects: objects}
+	digest.Sum(upload.ContentSHA256[:0])
+	return upload, nil
 }
 
-func inspect(body []byte) ([]Object, error) {
-	if fat, err := macho.NewFatFile(bytes.NewReader(body)); err == nil {
+func inspect(body io.ReaderAt) ([]Object, error) {
+	if fat, err := macho.NewFatFile(body); err == nil {
 		defer func() { _ = fat.Close() }()
 		objects := make([]Object, 0, len(fat.Arches))
 		seen := make(map[string]struct{}, len(fat.Arches))
@@ -56,7 +60,7 @@ func inspect(body []byte) ([]Object, error) {
 		}
 		return objects, nil
 	}
-	file, err := macho.NewFile(bytes.NewReader(body))
+	file, err := macho.NewFile(body)
 	if err != nil {
 		return nil, err
 	}

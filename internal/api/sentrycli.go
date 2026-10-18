@@ -49,7 +49,7 @@ type SentryCLIHandler struct {
 	releases     sentrycli.ReleaseStore
 	mappings     proguard.Repository
 	nativeFiles  nativedebug.Repository
-	decodeNative func([]byte) (nativedebug.Upload, error)
+	decodeNative func(io.ReaderAt, int64) (nativedebug.Upload, error)
 	reportError  func(error)
 
 	// sweepMu and lastSweep throttle sweepAbandonedChunks to at most once per

@@ -6,12 +6,18 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"runtime"
+	"runtime/debug"
+	"runtime/metrics"
 	"strings"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	nativedebug "github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/proguard"
@@ -141,7 +147,7 @@ func TestAssembleDebugFilesStoresNativeUniversalContentOnce(t *testing.T) {
 		{DebugID: "01000000-0000-0000-0000-000000000000", Index: 0},
 		{DebugID: "02000000-0000-0000-0000-000000000000", Index: 1},
 	}}
-	handler.decodeNative = func([]byte) (nativedebug.Upload, error) { return want, nil }
+	handler.decodeNative = func(io.ReaderAt, int64) (nativedebug.Upload, error) { return want, nil }
 	body := []byte("macho!")
 	checksum := sentrycli.ComputeChecksum(body)
 	fixture.chunks.staged[checksum] = body
@@ -168,7 +174,7 @@ func TestAssembleDebugFilesKeepsSharedChunksUntilEveryFileIsStored(t *testing.T)
 	handler, fixture := newSentryCLIFixture(t)
 	nativeFiles := &fakeNativeDebugFiles{}
 	handler.nativeFiles = nativeFiles
-	handler.decodeNative = func([]byte) (nativedebug.Upload, error) {
+	handler.decodeNative = func(io.ReaderAt, int64) (nativedebug.Upload, error) {
 		return nativedebug.Upload{Objects: []nativedebug.Object{{DebugID: "01000000-0000-0000-0000-000000000000"}}}, nil
 	}
 	shared, firstTail, secondTail := []byte("shared"), []byte("first"), []byte("second")
@@ -214,7 +220,7 @@ func TestAssembleDebugFilesReportsNativeValidationConflictAndQuotaAsPerFileError
 			handler, fixture := newSentryCLIFixture(t)
 			nativeFiles := &fakeNativeDebugFiles{err: test.putErr}
 			handler.nativeFiles = nativeFiles
-			handler.decodeNative = func([]byte) (nativedebug.Upload, error) {
+			handler.decodeNative = func(io.ReaderAt, int64) (nativedebug.Upload, error) {
 				return nativedebug.Upload{Objects: []nativedebug.Object{{DebugID: "01000000-0000-0000-0000-000000000000"}}}, test.decodeErr
 			}
 			body := []byte("native")
@@ -510,4 +516,90 @@ func multipartUpload(t *testing.T, field string, content []byte) *multipartBody 
 		t.Fatalf("close writer: %v", err)
 	}
 	return &multipartBody{data: buffer.Bytes(), contentType: writer.FormDataContentType()}
+}
+
+// A 90 MB R8 mapping once OOM-killed a 384 MiB container: assembling it held
+// the staged chunks, their concatenation and an io.ReadAll copy of that at the
+// same time. The staged chunks are the floor; whatever assembling adds on top
+// must not grow with the size of the mapping.
+func TestAssembleDebugFilesAddsNoMappingSizedCopyToTheStagedChunks(t *testing.T) {
+	const mappingBytes = 32 << 20
+	handler, fixture := newSentryCLIFixture(t)
+	mapping := syntheticMapping(mappingBytes)
+	chunkSize := int(sentrycli.DefaultChunkOptions("").ChunkSize)
+	var chunks []string
+	for start := 0; start < len(mapping); start += chunkSize {
+		chunk := mapping[start:min(start+chunkSize, len(mapping))]
+		checksum := sentrycli.ComputeChecksum(chunk)
+		fixture.chunks.staged[checksum] = chunk
+		chunks = append(chunks, checksum.String())
+	}
+	key := sentrycli.ComputeChecksum(mapping).String()
+	body, err := json.Marshal(map[string]debugFileAssembleItem{key: {Name: "/proguard/" + recordedMappingUUID + ".txt", Chunks: chunks}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	request := httptest.NewRequest(http.MethodPost, "/api/0/projects/demo/demo/files/difs/assemble/", bytes.NewReader(body))
+	request.Header.Set("Authorization", "Bearer "+testArtifactToken)
+	request.SetPathValue("project", "demo")
+	recorder := httptest.NewRecorder()
+
+	growth := peakHeapGrowth(func() { handler.AssembleDebugFiles(recorder, request) })
+
+	if state := decodeAssemble(t, recorder.Body.Bytes())[key]["state"]; recorder.Code != http.StatusOK || state != "ok" {
+		t.Fatalf("status = %d state = %v, want 200 ok: %s", recorder.Code, state, recorder.Body.String())
+	}
+	if stored := fixture.mappings.stored[recordedMappingUUID]; stored.UncompressedBytes != int64(len(mapping)) {
+		t.Fatalf("stored %d bytes, want the whole %d byte mapping", stored.UncompressedBytes, len(mapping))
+	}
+	// The compressed copy the repository keeps, with its buffer's growth, is
+	// inherent and comes to about half of this mapping; one more uncompressed
+	// copy of any kind is the whole mapping and lands well past the limit.
+	if limit := uint64(mappingBytes * 3 / 4); growth > limit {
+		t.Fatalf("assembling grew the heap by %d MiB over the staged chunks, want under %d MiB", growth>>20, limit>>20)
+	}
+}
+
+// syntheticMapping returns a valid mapping of at least size bytes whose class
+// names never repeat, so it does not compress to nothing.
+func syntheticMapping(size int) []byte {
+	var mapping bytes.Buffer
+	mapping.Grow(size + 256)
+	for index := 0; mapping.Len() < size; index++ {
+		fmt.Fprintf(&mapping, "com.acme.feature%d.Screen%d -> a.b%d:\n    1:4:void render(int):%d:%d -> a\n", index%97, index, index, index%500, index%500+3)
+	}
+	return mapping.Bytes()
+}
+
+// peakHeapGrowth runs work while sampling the live heap and returns how far it
+// rose above where it stood before. GC is made aggressive for the duration so
+// the samples track live data rather than garbage awaiting collection.
+func peakHeapGrowth(work func()) uint64 {
+	defer debug.SetGCPercent(debug.SetGCPercent(5))
+	runtime.GC()
+	sample := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+	metrics.Read(sample)
+	baseline := sample[0].Value.Uint64()
+
+	var peak atomic.Uint64
+	done, sampled := make(chan struct{}), make(chan struct{})
+	go func() {
+		defer close(sampled)
+		local := []metrics.Sample{{Name: "/memory/classes/heap/objects:bytes"}}
+		for {
+			metrics.Read(local)
+			if value := local[0].Value.Uint64(); value > peak.Load() {
+				peak.Store(value)
+			}
+			select {
+			case <-done:
+				return
+			case <-time.After(time.Millisecond):
+			}
+		}
+	}()
+	work()
+	close(done)
+	<-sampled
+	return max(peak.Load(), baseline) - baseline
 }

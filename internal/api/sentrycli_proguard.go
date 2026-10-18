@@ -1,7 +1,6 @@
 package api
 
 import (
-	"bytes"
 	"encoding/hex"
 	"errors"
 	"fmt"
@@ -124,7 +123,7 @@ func (h *SentryCLIHandler) assembleDebugFile(w http.ResponseWriter, r *http.Requ
 		writeError(w, http.StatusRequestEntityTooLarge, "assembled file exceeds the maximum file size")
 		return debugFileAssembleResult{}, false
 	}
-	assembled, err := sentrycli.Concat(wanted, staged, total)
+	assembled, err := sentrycli.Assemble(wanted, staged, total)
 	if err != nil {
 		return failedDebugFile("assembled file does not match its checksum"), true
 	}
@@ -135,11 +134,11 @@ func (h *SentryCLIHandler) assembleDebugFile(w http.ResponseWriter, r *http.Requ
 	return h.storeNativeDebugFile(w, r, token, assembled)
 }
 
-func (h *SentryCLIHandler) storeProguardDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, mappingUUID string, assembled []byte) (debugFileAssembleResult, bool) {
+func (h *SentryCLIHandler) storeProguardDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, mappingUUID string, assembled *sentrycli.Assembled) (debugFileAssembleResult, bool) {
 	if h.mappings == nil {
 		return failedDebugFile("proguard mappings are not configured"), true
 	}
-	upload, err := proguard.DecodeUpload(bytes.NewReader(assembled))
+	upload, err := proguard.DecodeUpload(assembled.Reader())
 	switch {
 	case errors.Is(err, proguard.ErrTooLarge):
 		return failedDebugFile("proguard mapping is too large"), true
@@ -164,11 +163,11 @@ func (h *SentryCLIHandler) storeProguardDebugFile(w http.ResponseWriter, r *http
 	return debugFileAssembleResult{State: "ok", MissingChunks: []string{}}, true
 }
 
-func (h *SentryCLIHandler) storeNativeDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, assembled []byte) (debugFileAssembleResult, bool) {
+func (h *SentryCLIHandler) storeNativeDebugFile(w http.ResponseWriter, r *http.Request, token artifactauth.Token, assembled *sentrycli.Assembled) (debugFileAssembleResult, bool) {
 	if h.nativeFiles == nil {
 		return failedDebugFile("not a valid proguard mapping or Mach-O debug file"), true
 	}
-	upload, err := h.decodeNative(assembled)
+	upload, err := h.decodeNative(assembled, assembled.Size())
 	switch {
 	case errors.Is(err, nativedebug.ErrTooLarge):
 		return failedDebugFile("native debug file is too large"), true

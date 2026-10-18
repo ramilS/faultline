@@ -74,34 +74,46 @@ type Repository interface {
 }
 
 // DecodeUpload reads one mapping, bounds its size, validates its structure and
-// compresses it for storage.
+// compresses it for storage in a single pass: the mapping text itself is never
+// held in memory, only its compressed form, so a mapping near MaxDecodedBytes
+// costs a fraction of its size on top of whatever reader holds it.
 func DecodeUpload(reader io.Reader) (DecodedUpload, error) {
-	data, err := io.ReadAll(io.LimitReader(reader, MaxDecodedBytes+1))
-	if err != nil {
-		return DecodedUpload{}, fmt.Errorf("%w: read: %w", ErrInvalidMapping, err)
-	}
-	if len(data) > MaxDecodedBytes {
-		return DecodedUpload{}, ErrTooLarge
-	}
-	if err := Validate(bytes.NewReader(data)); err != nil {
+	limited := io.LimitReader(reader, MaxDecodedBytes+1)
+	var stored bytes.Buffer
+	compressor := gzip.NewWriter(&stored)
+	contentDigest := sha256.New()
+	//nolint:gosec // G401: see the sha1 import
+	nameDigest := sha1.New()
+	var size countingWriter
+	text := io.TeeReader(limited, io.MultiWriter(compressor, contentDigest, nameDigest, &size))
+
+	if err := Validate(text); err != nil {
+		// An oversized upload is reported as such even when its first bad
+		// line comes before the cap, as it was when the whole body was read
+		// up front. Draining skips the compressor and the digests.
+		rest, _ := io.Copy(io.Discard, limited)
+		if size.bytes+rest > MaxDecodedBytes {
+			return DecodedUpload{}, ErrTooLarge
+		}
 		return DecodedUpload{}, err
 	}
+	if size.bytes > MaxDecodedBytes {
+		return DecodedUpload{}, ErrTooLarge
+	}
+	if err := compressor.Close(); err != nil {
+		return DecodedUpload{}, fmt.Errorf("compress proguard mapping: %w", err)
+	}
+	upload := DecodedUpload{Compressed: stored.Bytes(), UncompressedBytes: size.bytes}
+	contentDigest.Sum(upload.SHA256[:0])
+	nameDigest.Sum(upload.SHA1[:0])
+	return upload, nil
+}
 
-	var stored bytes.Buffer
-	writer := gzip.NewWriter(&stored)
-	if _, err := writer.Write(data); err != nil {
-		return DecodedUpload{}, fmt.Errorf("compress proguard mapping: %w", err)
-	}
-	if err := writer.Close(); err != nil {
-		return DecodedUpload{}, fmt.Errorf("compress proguard mapping: %w", err)
-	}
-	return DecodedUpload{
-		Compressed: stored.Bytes(),
-		SHA256:     sha256.Sum256(data),
-		//nolint:gosec // G401: see the sha1 import
-		SHA1:              sha1.Sum(data),
-		UncompressedBytes: int64(len(data)),
-	}, nil
+type countingWriter struct{ bytes int64 }
+
+func (w *countingWriter) Write(p []byte) (int, error) {
+	w.bytes += int64(len(p))
+	return len(p), nil
 }
 
 // MappingUUIDFromName extracts the canonical lowercase mapping UUID from the

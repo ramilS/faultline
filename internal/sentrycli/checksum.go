@@ -7,6 +7,7 @@ import (
 	"encoding/hex"
 	"errors"
 	"fmt"
+	"io"
 )
 
 var (
@@ -49,22 +50,17 @@ func (c Checksum) String() string {
 // Concat reassembles a file from its chunks in the client's declared order and
 // verifies the result against the checksum the client declared for the whole.
 // Chunks arrive over several concurrent requests in no particular order; order
-// is what the assemble request supplies, and bodies is what storage holds.
+// is what the assemble request supplies, and bodies is what storage holds. It
+// copies every chunk into one buffer; a caller that can read through
+// io.ReaderAt should use Assemble instead.
 func Concat(order []Checksum, bodies map[Checksum][]byte, want Checksum) ([]byte, error) {
-	total := 0
-	for _, checksum := range order {
-		body, ok := bodies[checksum]
-		if !ok {
-			return nil, fmt.Errorf("%w: %s", ErrMissingChunk, checksum)
-		}
-		total += len(body)
+	assembled, err := Assemble(order, bodies, want)
+	if err != nil {
+		return nil, err
 	}
-	assembled := make([]byte, 0, total)
-	for _, checksum := range order {
-		assembled = append(assembled, bodies[checksum]...)
+	whole := make([]byte, assembled.Size())
+	if _, err := io.ReadFull(assembled.Reader(), whole); err != nil {
+		return nil, fmt.Errorf("read assembled file: %w", err)
 	}
-	if got := ComputeChecksum(assembled); got != want {
-		return nil, fmt.Errorf("%w: got %s, want %s", ErrChecksumMismatch, got, want)
-	}
-	return assembled, nil
+	return whole, nil
 }
