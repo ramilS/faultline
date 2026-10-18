@@ -19,6 +19,8 @@ services:
       FAULTLINE_OIDC_ALLOWED_HD: "${FAULTLINE_OIDC_ALLOWED_HD:-}"
     volumes:
       - spill:/var/lib/faultline/spill
+    # Faultline gives the Go collector 85% of this as its soft limit at start
+    # (unless GOMEMLIMIT is set), so raising it needs nothing else.
     mem_limit: "${FAULTLINE_MEM_LIMIT:-384m}"
     depends_on:
       db:

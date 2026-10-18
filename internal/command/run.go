@@ -6,6 +6,8 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"os"
+	"runtime/debug"
 	"time"
 
 	"golang.org/x/term"
@@ -25,6 +27,7 @@ import (
 	"github.com/ramilS/faultline/internal/pipeline"
 	"github.com/ramilS/faultline/internal/platform/config"
 	"github.com/ramilS/faultline/internal/platform/httpserver"
+	"github.com/ramilS/faultline/internal/platform/memlimit"
 	migrate "github.com/ramilS/faultline/internal/platform/migrate"
 	"github.com/ramilS/faultline/internal/proguard"
 	"github.com/ramilS/faultline/internal/project"
@@ -165,6 +168,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		return runGroupMembers(ctx, groupOptions, stdout, stderr, database)
 	case "group-projects":
 		return runGroupProjects(ctx, groupOptions, stdout, stderr, database)
+	}
+
+	if limit, ok := memlimit.FromCgroup(os.Getenv("GOMEMLIMIT"), os.ReadFile); ok {
+		debug.SetMemoryLimit(limit)
+		fmt.Fprintf(stderr, "faultline: memory: soft limit %d MiB from the container's limit\n", limit>>20)
 	}
 
 	reportAuthError := func(err error) {
