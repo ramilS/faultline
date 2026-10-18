@@ -124,6 +124,53 @@ func TestResolverPreservesUnresolvedFramesAndReportsRepositoryFailures(t *testin
 	}
 }
 
+type countingRepository struct {
+	memoryRepository
+	finds int
+}
+
+func (r *countingRepository) Find(ctx context.Context, projectID int64, debugID string) (Stored, error) {
+	r.finds++
+	return r.memoryRepository.Find(ctx, projectID, debugID)
+}
+
+// Find returns the whole compressed debug file, so a stack whose frames share
+// an image must not fetch it once per frame, and a later event must reuse the
+// parsed image instead of fetching it again.
+func TestResolverFetchesASharedImageOncePerProject(t *testing.T) {
+	upload, err := decodeBytes(minimalMachO(macho.CpuArm64, [16]byte{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	repository := &countingRepository{memoryRepository: memoryRepository{stored: Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}}}
+	resolver := NewResolver(repository, &fallbackResolver{})
+	payload := []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"},{"instruction_addr":"0x100020"},{"instruction_addr":"0x100030"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)
+
+	for range 2 {
+		got, err := resolver.Resolve(t.Context(), sourcemap.EventInput{ProjectID: 7, Payload: payload})
+		if err != nil || got == nil || len(got.Frames) != 3 || got.Frames[2].Original == nil {
+			t.Fatalf("resolved = %#v, %v", got, err)
+		}
+	}
+	if repository.finds != 1 {
+		t.Fatalf("Find called %d times, want 1", repository.finds)
+	}
+}
+
+// An image no one uploaded, such as a system framework, is looked up once per
+// event however many of its frames the stack holds.
+func TestResolverLooksUpAMissingImageOncePerEvent(t *testing.T) {
+	repository := &countingRepository{memoryRepository: memoryRepository{err: ErrNotFound}}
+	payload := []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"},{"instruction_addr":"0x100020"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)
+
+	if _, err := NewResolver(repository, &fallbackResolver{}).Resolve(t.Context(), sourcemap.EventInput{ProjectID: 7, Payload: payload}); err != nil {
+		t.Fatal(err)
+	}
+	if repository.finds != 1 {
+		t.Fatalf("Find called %d times, want 1", repository.finds)
+	}
+}
+
 func minimalMachO(cpu macho.Cpu, id [16]byte) []byte {
 	abbrev := []byte{
 		1, 0x11, 1, 0x11, 1, 0x12, 1, 0x10, 0x17, 0, 0,

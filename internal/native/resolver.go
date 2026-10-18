@@ -25,8 +25,16 @@ const (
 )
 
 type parsedObject struct {
-	data  *dwarf.Data
-	funcs []functionRange
+	data   *dwarf.Data
+	funcs  []functionRange
+	vmaddr uint64
+}
+
+// imageLookup is what one event learned about an image, so the rest of its
+// frames in that image neither query the repository nor parse it again.
+type imageLookup struct {
+	object *parsedObject
+	err    error
 }
 
 type functionRange struct {
@@ -104,6 +112,7 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 	var firstFailure error
 	var resolvedAny bool
 	var head *sourcemap.Exception
+	looked := make(map[string]imageLookup)
 	for _, value := range payload.Exception.Values {
 		exception := &sourcemap.Exception{Type: value.Type, Value: value.Value, Cause: head}
 		if value.Stacktrace != nil {
@@ -122,27 +131,19 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 					exception.Frames = append(exception.Frames, frame)
 					continue
 				}
-				stored, err := r.repo.Find(ctx, in.ProjectID, image.DebugID)
+				object, err := r.objectFor(ctx, in.ProjectID, image.DebugID, looked)
 				if errors.Is(err, ErrNotFound) {
 					exception.Frames = append(exception.Frames, frame)
 					continue
 				}
 				if err != nil {
 					if firstFailure == nil {
-						firstFailure = fmt.Errorf("find native debug file %s: %w", image.DebugID, err)
+						firstFailure = err
 					}
 					exception.Frames = append(exception.Frames, frame)
 					continue
 				}
-				object, err := r.load(stored)
-				if err != nil {
-					if firstFailure == nil {
-						firstFailure = fmt.Errorf("read native debug file %s: %w", image.DebugID, err)
-					}
-					exception.Frames = append(exception.Frames, frame)
-					continue
-				}
-				pc := address - image.Base + stored.VMAddr
+				pc := address - image.Base + object.vmaddr
 				if original, ok := resolvePC(object, pc, source.InApp); ok {
 					frame.Original = original
 					resolvedAny = true
@@ -208,14 +209,44 @@ func imageFor(images []imageRange, address uint64) (imageRange, bool) {
 	return imageRange{}, false
 }
 
-func (r *resolver) load(stored Stored) (*parsedObject, error) {
-	key := fmt.Sprintf("%d/%d", stored.BlobID, stored.ObjectIndex)
+// objectFor resolves an image once per event; looked holds what earlier frames
+// of the same event already found.
+func (r *resolver) objectFor(ctx context.Context, projectID int64, debugID string, looked map[string]imageLookup) (*parsedObject, error) {
+	if found, ok := looked[debugID]; ok {
+		return found.object, found.err
+	}
+	object, err := r.lookup(ctx, projectID, debugID)
+	looked[debugID] = imageLookup{object: object, err: err}
+	return object, err
+}
+
+// lookup checks the parsed cache before the repository: Find returns the whole
+// compressed debug file. A debug id's content is immutable once stored (Put
+// refuses different bytes under it), so the project and debug id are a sound
+// cache key.
+func (r *resolver) lookup(ctx context.Context, projectID int64, debugID string) (*parsedObject, error) {
+	key := fmt.Sprintf("%d/%s", projectID, debugID)
 	r.cache.mu.Lock()
 	cached := r.cache.m[key]
 	r.cache.mu.Unlock()
 	if cached != nil {
 		return cached, nil
 	}
+	stored, err := r.repo.Find(ctx, projectID, debugID)
+	if errors.Is(err, ErrNotFound) {
+		return nil, err
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find native debug file %s: %w", debugID, err)
+	}
+	object, err := r.load(key, stored)
+	if err != nil {
+		return nil, fmt.Errorf("read native debug file %s: %w", debugID, err)
+	}
+	return object, nil
+}
+
+func (r *resolver) load(key string, stored Stored) (*parsedObject, error) {
 	body, err := decompress(stored)
 	if err != nil {
 		return nil, err
@@ -229,7 +260,7 @@ func (r *resolver) load(stored Stored) (*parsedObject, error) {
 	if err != nil {
 		return nil, err
 	}
-	parsed := &parsedObject{data: data}
+	parsed := &parsedObject{data: data, vmaddr: stored.VMAddr}
 	reader := data.Reader()
 	for {
 		entry, err := reader.Next()
