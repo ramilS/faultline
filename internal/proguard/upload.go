@@ -5,9 +5,7 @@ import (
 	"bytes"
 	"compress/gzip"
 	"context"
-	//nolint:gosec // G505: sentry-cli names files by SHA-1 and echoes it back in its
-	// legacy upload reply; it is a content address here, not a signature.
-	"crypto/sha1"
+	"crypto/sha1" //nolint:gosec // G505: sentry-cli names files by SHA-1 and echoes it back; a content address, not a signature.
 	"crypto/sha256"
 	"errors"
 	"fmt"

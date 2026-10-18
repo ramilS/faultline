@@ -142,7 +142,7 @@ func TestResolverFetchesASharedImageOncePerProject(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repository := &countingRepository{memoryRepository: memoryRepository{stored: Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}}}
+	repository := &countingRepository{stored: Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}}
 	resolver := NewResolver(repository, &fallbackResolver{})
 	payload := []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"},{"instruction_addr":"0x100020"},{"instruction_addr":"0x100030"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)
 
@@ -160,7 +160,7 @@ func TestResolverFetchesASharedImageOncePerProject(t *testing.T) {
 // An image no one uploaded, such as a system framework, is looked up once per
 // event however many of its frames the stack holds.
 func TestResolverLooksUpAMissingImageOncePerEvent(t *testing.T) {
-	repository := &countingRepository{memoryRepository: memoryRepository{err: ErrNotFound}}
+	repository := &countingRepository{err: ErrNotFound}
 	payload := []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"},{"instruction_addr":"0x100020"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)
 
 	if _, err := NewResolver(repository, &fallbackResolver{}).Resolve(t.Context(), sourcemap.EventInput{ProjectID: 7, Payload: payload}); err != nil {

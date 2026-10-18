@@ -104,6 +104,7 @@ func (h *SSOHandler) Start(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
+	//nolint:gosec // G124: Secure follows FAULTLINE_COOKIE_SECURE, true unless a plain-http deployment turns it off explicitly.
 	http.SetCookie(w, &http.Cookie{
 		Name:     ssoStateCookieName,
 		Value:    base64.RawURLEncoding.EncodeToString(encoded),
@@ -223,6 +224,7 @@ func (h *SSOHandler) readFlowState(r *http.Request) (flowState, bool) {
 // clearFlowCookie expires the flow cookie so a failed or completed attempt
 // cannot be replayed.
 func (h *SSOHandler) clearFlowCookie(w http.ResponseWriter) {
+	//nolint:gosec // G124: Secure follows FAULTLINE_COOKIE_SECURE, true unless a plain-http deployment turns it off explicitly.
 	http.SetCookie(w, &http.Cookie{
 		Name:     ssoStateCookieName,
 		Value:    "",

@@ -12,7 +12,7 @@ import (
 
 func TestProvidersReportsDisabledByDefault(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	api.NewProvidersHandler(false).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
+	api.NewProvidersHandler(false).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", http.NoBody))
 
 	if recorder.Code != http.StatusOK {
 		t.Fatalf("status = %d, want 200", recorder.Code)
@@ -32,7 +32,7 @@ func TestProvidersReportsDisabledByDefault(t *testing.T) {
 
 func TestProvidersReportsEnabled(t *testing.T) {
 	recorder := httptest.NewRecorder()
-	api.NewProvidersHandler(true).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", nil))
+	api.NewProvidersHandler(true).ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/providers", http.NoBody))
 
 	if !strings.Contains(recorder.Body.String(), `"enabled":true`) {
 		t.Fatalf("body = %q", recorder.Body.String())

@@ -279,7 +279,7 @@ func loadSSO() (SSOConfig, error) {
 			return SSOConfig{}, fmt.Errorf("%s is required when FAULTLINE_OIDC_CLIENT_ID is set", name)
 		}
 	}
-	for _, domain := range strings.Split(os.Getenv("FAULTLINE_OIDC_ALLOWED_HD"), ",") {
+	for domain := range strings.SplitSeq(os.Getenv("FAULTLINE_OIDC_ALLOWED_HD"), ",") {
 		domain = strings.ToLower(strings.TrimSpace(domain))
 		if domain != "" {
 			sso.AllowedDomains = append(sso.AllowedDomains, domain)

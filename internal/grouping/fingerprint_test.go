@@ -109,8 +109,8 @@ func nativeCrash(frames ...Frame) GroupingInput {
 }
 
 func TestFingerprintSeparatesNativeFramesByImageOffset(t *testing.T) {
-	load := nativeCrash(Frame{Package: "/x/MyApp.app/MyApp", ImageOffset: offsetAt(0xc000), InApp: true})
-	save := nativeCrash(Frame{Package: "/x/MyApp.app/MyApp", ImageOffset: offsetAt(0xd400), InApp: true})
+	load := nativeCrash(Frame{Package: "/x/MyApp.app/MyApp", ImageOffset: new(uint64(0xc000)), InApp: true})
+	save := nativeCrash(Frame{Package: "/x/MyApp.app/MyApp", ImageOffset: new(uint64(0xd400)), InApp: true})
 	bare := nativeCrash(Frame{InApp: true})
 
 	if Fingerprint(load).Fingerprint == Fingerprint(save).Fingerprint {
@@ -122,8 +122,8 @@ func TestFingerprintSeparatesNativeFramesByImageOffset(t *testing.T) {
 }
 
 func TestFingerprintKeepsNativeFrameStableAcrossLaunches(t *testing.T) {
-	first := nativeCrash(Frame{Package: "/private/var/a/MyApp.app/MyApp", ImageOffset: offsetAt(0xc000), InApp: true})
-	relaunch := nativeCrash(Frame{Package: "/private/var/b/MyApp.app/MyApp", ImageOffset: offsetAt(0xc000), InApp: true})
+	first := nativeCrash(Frame{Package: "/private/var/a/MyApp.app/MyApp", ImageOffset: new(uint64(0xc000)), InApp: true})
+	relaunch := nativeCrash(Frame{Package: "/private/var/b/MyApp.app/MyApp", ImageOffset: new(uint64(0xc000)), InApp: true})
 
 	if Fingerprint(first).Fingerprint != Fingerprint(relaunch).Fingerprint {
 		t.Fatal("the same image offset must group together whatever the install path")
@@ -131,7 +131,7 @@ func TestFingerprintKeepsNativeFrameStableAcrossLaunches(t *testing.T) {
 }
 
 func TestFingerprintCulpritNamesTheNativeFrame(t *testing.T) {
-	result := Fingerprint(nativeCrash(Frame{Package: "/x/MyApp", ImageOffset: offsetAt(0xc000), InApp: true}))
+	result := Fingerprint(nativeCrash(Frame{Package: "/x/MyApp", ImageOffset: new(uint64(0xc000)), InApp: true}))
 
 	if result.Culprit != "MyApp+0xc000" {
 		t.Fatalf("culprit = %q, want MyApp+0xc000", result.Culprit)

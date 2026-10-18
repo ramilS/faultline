@@ -78,7 +78,7 @@ func TestSSOStartRedirectsAndSetsOneStateCookie(t *testing.T) {
 	handler := api.NewSSOHandler(provider, &stubIdentityLogins{}, nil, auth.AllowedDomains{"example.com"}, api.Options{CookieSecure: true})
 
 	recorder := httptest.NewRecorder()
-	handler.Start(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", nil))
+	handler.Start(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", http.NoBody))
 
 	if recorder.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302", recorder.Code)
@@ -124,9 +124,9 @@ func TestSSOStartMintsFreshValuesEachTime(t *testing.T) {
 	provider := &stubSSO{}
 	handler := api.NewSSOHandler(provider, &stubIdentityLogins{}, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 
-	handler.Start(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", nil))
+	handler.Start(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", http.NoBody))
 	firstState, firstNonce, firstChallenge := provider.lastState, provider.lastNonce, provider.lastChallenge
-	handler.Start(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", nil))
+	handler.Start(httptest.NewRecorder(), httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", http.NoBody))
 
 	if firstState == provider.lastState || firstState == "" {
 		t.Fatalf("state was reused across sign-ins: %q", firstState)
@@ -142,7 +142,7 @@ func TestSSOStartMintsFreshValuesEachTime(t *testing.T) {
 func startFlow(t *testing.T, handler *api.SSOHandler) *http.Cookie {
 	t.Helper()
 	recorder := httptest.NewRecorder()
-	handler.Start(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", nil))
+	handler.Start(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/start", http.NoBody))
 	cookies := recorder.Result().Cookies()
 	if len(cookies) != 1 {
 		t.Fatalf("Start set %d cookies, want 1", len(cookies))
@@ -158,7 +158,7 @@ func TestSSOCallbackSignsInAndClearsFlowCookie(t *testing.T) {
 	handler := api.NewSSOHandler(provider, logins, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 	cookie := startFlow(t, handler)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, http.NoBody)
 	request.AddCookie(cookie)
 	recorder := httptest.NewRecorder()
 	handler.Callback(recorder, request)
@@ -226,7 +226,7 @@ func TestSSOCallbackRejectsMismatchedState(t *testing.T) {
 	handler := api.NewSSOHandler(provider, logins, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 	cookie := startFlow(t, handler)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state=forged", nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state=forged", http.NoBody)
 	request.AddCookie(cookie)
 	recorder := httptest.NewRecorder()
 	handler.Callback(recorder, request)
@@ -246,7 +246,7 @@ func TestSSOCallbackRejectsMissingFlowCookie(t *testing.T) {
 	handler := api.NewSSOHandler(provider, logins, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 
 	recorder := httptest.NewRecorder()
-	handler.Callback(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state=whatever", nil))
+	handler.Callback(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state=whatever", http.NoBody))
 
 	if recorder.Code != http.StatusForbidden {
 		t.Fatalf("status = %d, want 403", recorder.Code)
@@ -264,7 +264,7 @@ func TestSSOCallbackRejectsForeignHostedDomain(t *testing.T) {
 	handler := api.NewSSOHandler(provider, logins, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 	cookie := startFlow(t, handler)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, http.NoBody)
 	request.AddCookie(cookie)
 	recorder := httptest.NewRecorder()
 	handler.Callback(recorder, request)
@@ -293,7 +293,7 @@ func TestSSOCallbackReportsAnUnconfiguredLoginService(t *testing.T) {
 	})
 	cookie := startFlow(t, handler)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, http.NoBody)
 	request.AddCookie(cookie)
 	recorder := httptest.NewRecorder()
 	handler.Callback(recorder, request)
@@ -320,7 +320,7 @@ func TestSSOCallbackBoundsTheExchangeDeadline(t *testing.T) {
 	handler := api.NewSSOHandler(provider, &stubIdentityLogins{token: "t"}, nil, auth.AllowedDomains{"example.com"}, api.Options{})
 	cookie := startFlow(t, handler)
 
-	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, nil)
+	request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, http.NoBody)
 	request.AddCookie(cookie)
 	handler.Callback(httptest.NewRecorder(), request)
 
@@ -347,7 +347,7 @@ func TestSSOCallbackRateLimitsExchangesPerAddress(t *testing.T) {
 
 	attempt := func(remoteAddr string) *httptest.ResponseRecorder {
 		cookie := startFlow(t, handler)
-		request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, nil)
+		request := httptest.NewRequest(http.MethodGet, "/api/v1/auth/sso/callback?code=abc&state="+provider.lastState, http.NoBody)
 		request.RemoteAddr = remoteAddr
 		request.AddCookie(cookie)
 		recorder := httptest.NewRecorder()

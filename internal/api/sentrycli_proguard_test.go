@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"maps"
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
@@ -179,9 +180,7 @@ func TestAssembleDebugFilesKeepsSharedChunksUntilEveryFileIsStored(t *testing.T)
 	}
 	shared, firstTail, secondTail := []byte("shared"), []byte("first"), []byte("second")
 	sharedSum, firstTailSum, secondTailSum := sentrycli.ComputeChecksum(shared), sentrycli.ComputeChecksum(firstTail), sentrycli.ComputeChecksum(secondTail)
-	for checksum, body := range map[sentrycli.Checksum][]byte{sharedSum: shared, firstTailSum: firstTail, secondTailSum: secondTail} {
-		fixture.chunks.staged[checksum] = body
-	}
+	maps.Copy(fixture.chunks.staged, map[sentrycli.Checksum][]byte{sharedSum: shared, firstTailSum: firstTail, secondTailSum: secondTail})
 	firstSum := sentrycli.ComputeChecksum(append(append([]byte{}, shared...), firstTail...))
 	secondSum := sentrycli.ComputeChecksum(append(append([]byte{}, shared...), secondTail...))
 	body, err := json.Marshal(map[string]debugFileAssembleItem{
@@ -441,7 +440,7 @@ func TestUploadLegacyDebugFileStoresTheRecordedUpload(t *testing.T) {
 
 func TestUploadLegacyDebugFileRejectsAnOversizedBody(t *testing.T) {
 	handler, fixture := newSentryCLIFixture(t)
-	oversized := multipartUpload(t, "file", bytes.Repeat([]byte{0}, legacyUploadLimit+1))
+	oversized := multipartUpload(t, "file", make([]byte, legacyUploadLimit+1))
 	request := httptest.NewRequest(http.MethodPost, "/api/0/projects/demo/demo/files/dsyms/", bytes.NewReader(oversized.data))
 	request.Header.Set("Content-Type", oversized.contentType)
 	request.Header.Set("Authorization", "Bearer "+testArtifactToken)

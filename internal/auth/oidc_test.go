@@ -8,6 +8,7 @@ import (
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
+	"maps"
 	"math/big"
 	"net/http"
 	"net/http/httptest"
@@ -18,19 +19,19 @@ import (
 	"github.com/ramilS/faultline/internal/auth"
 )
 
-type testIdP struct {
+type testIDP struct {
 	server *httptest.Server
 	key    *rsa.PrivateKey
 	claims map[string]any
 }
 
-func newTestIdP(t *testing.T, claims map[string]any) *testIdP {
+func newTestIDP(t *testing.T, claims map[string]any) *testIDP {
 	t.Helper()
 	key, err := rsa.GenerateKey(rand.Reader, 2048)
 	if err != nil {
 		t.Fatalf("generate key: %v", err)
 	}
-	idp := &testIdP{key: key, claims: claims}
+	idp := &testIDP{key: key, claims: claims}
 	mux := http.NewServeMux()
 	idp.server = httptest.NewServer(mux)
 	t.Cleanup(idp.server.Close)
@@ -50,7 +51,7 @@ func newTestIdP(t *testing.T, claims map[string]any) *testIdP {
 			"alg": "RS256",
 			"use": "sig",
 			"kid": "test-key",
-			"n":   base64.RawURLEncoding.EncodeToString(key.PublicKey.N.Bytes()),
+			"n":   base64.RawURLEncoding.EncodeToString(key.N.Bytes()),
 			"e":   base64.RawURLEncoding.EncodeToString(big.NewInt(int64(key.PublicKey.E)).Bytes()),
 		}}})
 	})
@@ -69,7 +70,7 @@ func writeJSON(w http.ResponseWriter, payload any) {
 	_ = json.NewEncoder(w).Encode(payload)
 }
 
-func (idp *testIdP) signIDToken(t *testing.T) string {
+func (idp *testIDP) signIDToken(t *testing.T) string {
 	t.Helper()
 	header := map[string]any{"alg": "RS256", "kid": "test-key", "typ": "JWT"}
 	claims := map[string]any{
@@ -78,9 +79,7 @@ func (idp *testIdP) signIDToken(t *testing.T) string {
 		"exp": time.Now().Add(time.Hour).Unix(),
 		"iat": time.Now().Unix(),
 	}
-	for key, value := range idp.claims {
-		claims[key] = value
-	}
+	maps.Copy(claims, idp.claims)
 
 	segment := func(value any) string {
 		encoded, err := json.Marshal(value)
@@ -98,7 +97,7 @@ func (idp *testIdP) signIDToken(t *testing.T) string {
 	return signingInput + "." + base64.RawURLEncoding.EncodeToString(signature)
 }
 
-func newProvider(t *testing.T, idp *testIdP) *auth.OIDCProvider {
+func newProvider(t *testing.T, idp *testIDP) *auth.OIDCProvider {
 	t.Helper()
 	provider, err := auth.NewOIDCProvider(context.Background(), auth.OIDCOptions{
 		Issuer:       idp.server.URL,
@@ -113,7 +112,7 @@ func newProvider(t *testing.T, idp *testIdP) *auth.OIDCProvider {
 }
 
 func TestExchangeReturnsClaims(t *testing.T) {
-	idp := newTestIdP(t, map[string]any{
+	idp := newTestIDP(t, map[string]any{
 		"sub": "sub-1", "email": "person@example.com", "email_verified": true,
 		"hd": "example.com", "name": "Person", "nonce": "nonce-1",
 	})
@@ -129,7 +128,7 @@ func TestExchangeReturnsClaims(t *testing.T) {
 }
 
 func TestExchangeRejectsMismatchedNonce(t *testing.T) {
-	idp := newTestIdP(t, map[string]any{
+	idp := newTestIDP(t, map[string]any{
 		"sub": "sub-1", "email": "person@example.com", "email_verified": true,
 		"hd": "example.com", "nonce": "attacker-nonce",
 	})
@@ -141,7 +140,7 @@ func TestExchangeRejectsMismatchedNonce(t *testing.T) {
 }
 
 func TestAuthCodeURLCarriesPKCEAndNonce(t *testing.T) {
-	idp := newTestIdP(t, map[string]any{"sub": "sub-1"})
+	idp := newTestIDP(t, map[string]any{"sub": "sub-1"})
 	provider := newProvider(t, idp)
 
 	url := provider.AuthCodeURL("state-1", "nonce-1", "challenge-1")

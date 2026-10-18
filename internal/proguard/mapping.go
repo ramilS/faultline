@@ -136,9 +136,11 @@ func (c *class) addMember(line string) {
 	}
 	signature, tail := left[:closing+1], left[closing+1:]
 	if tail != "" {
-		if !entry.readOriginalLines(tail) {
+		start, end, ok := originalLines(tail)
+		if !ok {
 			return
 		}
+		entry.originalStart, entry.originalEnd = start, end
 	}
 	head, _, _ := strings.Cut(signature, "(")
 	name := head[strings.LastIndexByte(head, ' ')+1:]
@@ -152,25 +154,25 @@ func (c *class) addMember(line string) {
 	c.methods[strings.TrimSpace(obfuscatedName)] = append(c.methods[strings.TrimSpace(obfuscatedName)], entry)
 }
 
-// readOriginalLines parses the ":start[:end]" suffix of a method line.
-func (m *method) readOriginalLines(tail string) bool {
+// originalLines parses the ":start[:end]" suffix of a method line; a lone
+// start is a one-line range.
+func originalLines(tail string) (start, end int, ok bool) {
 	numbers := strings.Split(strings.TrimPrefix(tail, ":"), ":")
 	if len(numbers) > 2 {
-		return false
+		return 0, 0, false
 	}
-	start, ok := atoi(numbers[0])
+	start, ok = atoi(numbers[0])
 	if !ok {
-		return false
+		return 0, 0, false
 	}
-	m.originalStart, m.originalEnd = start, start
-	if len(numbers) == 2 {
-		end, ok := atoi(numbers[1])
-		if !ok {
-			return false
-		}
-		m.originalEnd = end
+	if len(numbers) == 1 {
+		return start, start, true
 	}
-	return true
+	end, ok = atoi(numbers[1])
+	if !ok {
+		return 0, 0, false
+	}
+	return start, end, true
 }
 
 func cutLast(text, separator string) (before, after string, found bool) {

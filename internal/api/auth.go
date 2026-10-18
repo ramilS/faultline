@@ -174,8 +174,6 @@ func declaredJSONBody(r *http.Request) bool {
 // Unknown fields are rejected: this is Faultline's own API, and a key the
 // server does not understand means the client and the server disagree about
 // what was requested.
-//
-//nolint:unparam // see the limit paragraph above: uniform today, per-endpoint by design
 func decodeSingleJSON(w http.ResponseWriter, r *http.Request, limit int64, output any) error {
 	return decodeJSONBody(w, r, limit, output, true)
 }
@@ -217,6 +215,7 @@ func decodeJSONBody(w http.ResponseWriter, r *http.Request, limit int64, output 
 // maxAge differs between them, and each caller derives it from the auth
 // package's own lifetime constant rather than restating the number.
 func setSessionCookie(w http.ResponseWriter, value string, maxAge int, secure bool) {
+	//nolint:gosec // G124: Secure follows FAULTLINE_COOKIE_SECURE, true unless a plain-http deployment turns it off explicitly.
 	http.SetCookie(w, &http.Cookie{
 		Name:     SessionCookieName,
 		Value:    value,

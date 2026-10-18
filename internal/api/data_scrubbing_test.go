@@ -34,8 +34,11 @@ func (s *stubDataScrubbingService) Update(_ context.Context, projectID int64, co
 	return config, s.err
 }
 
-func newDataScrubbingHandler(service DataScrubbingService, projects ProjectResolver, reported *error) *DataScrubbingHandler {
-	return NewDataScrubbingHandler(service, projects, Options{ReportError: func(err error) { *reported = err }})
+// errorRecorder keeps the last error a handler reported.
+type errorRecorder struct{ err error }
+
+func newDataScrubbingHandler(service DataScrubbingService, projects ProjectResolver, reported *errorRecorder) *DataScrubbingHandler {
+	return NewDataScrubbingHandler(service, projects, Options{ReportError: func(err error) { reported.err = err }})
 }
 
 func dataScrubbingRequest(method, body string) *http.Request {
@@ -46,7 +49,7 @@ func dataScrubbingRequest(method, body string) *http.Request {
 }
 
 func TestGetDataScrubbingReturnsTheConfigWithEmptyListsAsArrays(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	handler := newDataScrubbingHandler(&stubDataScrubbingService{config: scrub.Config{Enabled: true}}, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
@@ -59,7 +62,7 @@ func TestGetDataScrubbingReturnsTheConfigWithEmptyListsAsArrays(t *testing.T) {
 }
 
 func TestGetDataScrubbingProjectNotFound(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	handler := newDataScrubbingHandler(&stubDataScrubbingService{}, &stubGroupingRuleProjects{err: project.ErrNotFound}, &reported)
 
 	recorder := httptest.NewRecorder()
@@ -71,19 +74,19 @@ func TestGetDataScrubbingProjectNotFound(t *testing.T) {
 }
 
 func TestGetDataScrubbingReportsServiceError(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	handler := newDataScrubbingHandler(&stubDataScrubbingService{err: context.DeadlineExceeded}, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
 	handler.Get(recorder, dataScrubbingRequest(http.MethodGet, ""))
 
-	if recorder.Code != http.StatusInternalServerError || !errors.Is(reported, context.DeadlineExceeded) {
-		t.Fatalf("status = %d, reported = %v", recorder.Code, reported)
+	if recorder.Code != http.StatusInternalServerError || !errors.Is(reported.err, context.DeadlineExceeded) {
+		t.Fatalf("status = %d, reported = %v", recorder.Code, reported.err)
 	}
 }
 
 func TestUpdateDataScrubbingStoresTheConfig(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	service := &stubDataScrubbingService{}
 	handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
@@ -112,7 +115,7 @@ func TestUpdateDataScrubbingRejectsBadRequests(t *testing.T) {
 		"null safe":       `{"enabled":true,"extra_fields":[],"safe_fields":null,"rules":[]}`,
 	} {
 		t.Run(name, func(t *testing.T) {
-			var reported error
+			var reported errorRecorder
 			service := &stubDataScrubbingService{}
 			handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
@@ -127,20 +130,20 @@ func TestUpdateDataScrubbingRejectsBadRequests(t *testing.T) {
 }
 
 func TestUpdateDataScrubbingMapsValidationFailureTo400(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	service := &stubDataScrubbingService{err: scrub.ErrInvalidConfig}
 	handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
 	handler.Update(recorder, dataScrubbingRequest(http.MethodPut, `{"enabled":true,"extra_fields":[" "],"safe_fields":[],"rules":[]}`))
 
-	if recorder.Code != http.StatusBadRequest || reported != nil {
-		t.Fatalf("status = %d, reported = %v, want 400 and nothing reported", recorder.Code, reported)
+	if recorder.Code != http.StatusBadRequest || reported.err != nil {
+		t.Fatalf("status = %d, reported = %v, want 400 and nothing reported", recorder.Code, reported.err)
 	}
 }
 
 func TestUpdateDataScrubbingRefusesALookaheadThroughTheRealService(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	repository := &recordingScrubbingRepository{}
 	handler := newDataScrubbingHandler(scrub.NewService(repository), &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
@@ -150,38 +153,38 @@ func TestUpdateDataScrubbingRefusesALookaheadThroughTheRealService(t *testing.T)
 	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "RE2") {
 		t.Fatalf("response = %d %s, want 400 naming RE2", recorder.Code, recorder.Body.String())
 	}
-	if reported != nil || repository.writes != 0 {
-		t.Fatalf("reported = %v, writes = %d; want nothing reported and nothing written", reported, repository.writes)
+	if reported.err != nil || repository.writes != 0 {
+		t.Fatalf("reported = %v, writes = %d; want nothing reported and nothing written", reported.err, repository.writes)
 	}
 }
 
 func TestUpdateDataScrubbingReportsStorageError(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	handler := newDataScrubbingHandler(&stubDataScrubbingService{err: context.DeadlineExceeded}, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
 	handler.Update(recorder, dataScrubbingRequest(http.MethodPut, `{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]}`))
 
-	if recorder.Code != http.StatusInternalServerError || !errors.Is(reported, context.DeadlineExceeded) {
-		t.Fatalf("status = %d, reported = %v", recorder.Code, reported)
+	if recorder.Code != http.StatusInternalServerError || !errors.Is(reported.err, context.DeadlineExceeded) {
+		t.Fatalf("status = %d, reported = %v", recorder.Code, reported.err)
 	}
 }
 
 func TestUpdateDataScrubbingMapsAProjectDeletedAfterResolveTo404(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	service := &stubDataScrubbingService{err: project.ErrNotFound}
 	handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
 	handler.Update(recorder, dataScrubbingRequest(http.MethodPut, `{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]}`))
 
-	if recorder.Code != http.StatusNotFound || reported != nil {
-		t.Fatalf("status = %d, reported = %v, want 404 and nothing reported", recorder.Code, reported)
+	if recorder.Code != http.StatusNotFound || reported.err != nil {
+		t.Fatalf("status = %d, reported = %v, want 404 and nothing reported", recorder.Code, reported.err)
 	}
 }
 
 func TestUpdateDataScrubbingRefusesABodyWithoutRules(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	service := &stubDataScrubbingService{}
 	handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
@@ -194,7 +197,7 @@ func TestUpdateDataScrubbingRefusesABodyWithoutRules(t *testing.T) {
 }
 
 func TestUpdateDataScrubbingPassesRulesToTheService(t *testing.T) {
-	var reported error
+	var reported errorRecorder
 	service := &stubDataScrubbingService{}
 	handler := newDataScrubbingHandler(service, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 

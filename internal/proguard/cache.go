@@ -37,8 +37,8 @@ type cachedMapping struct {
 	covered map[string]struct{}
 }
 
-func newMappingCache(max int) *mappingCache {
-	return &mappingCache{max: max, order: list.New(), entries: map[string]*list.Element{}}
+func newMappingCache(capacity int) *mappingCache {
+	return &mappingCache{max: capacity, order: list.New(), entries: map[string]*list.Element{}}
 }
 
 // get returns the cached mapping when it was parsed for every class in classes.

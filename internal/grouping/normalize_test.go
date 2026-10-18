@@ -65,24 +65,22 @@ func TestNormalizeFrame(t *testing.T) {
 	}
 }
 
-func offsetAt(value uint64) *uint64 { return &value }
-
 func TestFrameKey(t *testing.T) {
 	for _, test := range []struct {
 		name  string
 		frame Frame
 		want  string
 	}{
-		{"named frame is unchanged", Frame{Module: "com.acme.Svc", Function: "run", Package: "/x/MyApp", ImageOffset: offsetAt(0x10)}, "com.acme.Svc.run"},
+		{"named frame is unchanged", Frame{Module: "com.acme.Svc", Function: "run", Package: "/x/MyApp", ImageOffset: new(uint64(0x10))}, "com.acme.Svc.run"},
 		{"function alone still wins over the image", Frame{Function: "main", Package: "/x/MyApp"}, "main"},
-		{"image with offset", Frame{Package: "/private/var/x/MyApp.app/MyApp", ImageOffset: offsetAt(0xc000)}, "MyApp+0xc000"},
+		{"image with offset", Frame{Package: "/private/var/x/MyApp.app/MyApp", ImageOffset: new(uint64(0xc000))}, "MyApp+0xc000"},
 		{"image without offset", Frame{Package: "/private/var/x/MyApp.app/MyApp"}, "MyApp"},
-		{"offset zero is kept", Frame{Package: "MyApp", ImageOffset: offsetAt(0)}, "MyApp+0x0"},
-		{"windows style path", Frame{Package: `C:\app\native.dll`, ImageOffset: offsetAt(0x1f)}, "native.dll+0x1f"},
-		{"anonymous function falls back to the image", Frame{Function: "<anonymous>", Package: "/x/MyApp", ImageOffset: offsetAt(0x20)}, "MyApp+0x20"},
-		{"bundle path with a trailing separator", Frame{Package: "/x/MyApp.app/", ImageOffset: offsetAt(0x20)}, "MyApp.app+0x20"},
-		{"separator only", Frame{Package: "/", ImageOffset: offsetAt(0x20)}, ""},
-		{"offset without an image is ignored", Frame{ImageOffset: offsetAt(0x20)}, ""},
+		{"offset zero is kept", Frame{Package: "MyApp", ImageOffset: new(uint64(0))}, "MyApp+0x0"},
+		{"windows style path", Frame{Package: `C:\app\native.dll`, ImageOffset: new(uint64(0x1f))}, "native.dll+0x1f"},
+		{"anonymous function falls back to the image", Frame{Function: "<anonymous>", Package: "/x/MyApp", ImageOffset: new(uint64(0x20))}, "MyApp+0x20"},
+		{"bundle path with a trailing separator", Frame{Package: "/x/MyApp.app/", ImageOffset: new(uint64(0x20))}, "MyApp.app+0x20"},
+		{"separator only", Frame{Package: "/", ImageOffset: new(uint64(0x20))}, ""},
+		{"offset without an image is ignored", Frame{ImageOffset: new(uint64(0x20))}, ""},
 		{"nothing usable", Frame{}, ""},
 	} {
 		t.Run(test.name, func(t *testing.T) {

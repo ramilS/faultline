@@ -42,7 +42,7 @@ var groupReference = regexp.MustCompile(`\$(\$|\{([^}]*)\}|([\p{L}\p{Nd}_]+))`)
 // groupNumber is a reference Regexp.Expand treats as a group number. Anything
 // else is checked as a group name, so a malformed reference such as ${-1},
 // which Expand would copy as literal text, is refused as an unknown group.
-var groupNumber = regexp.MustCompile(`^[0-9]+$`)
+var groupNumber = regexp.MustCompile(`^\d+$`)
 
 // NormalizeRules validates rules and returns them with names trimmed, always as
 // a non-nil slice.
