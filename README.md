@@ -60,7 +60,7 @@ Create the schema and the first account. Neither happens automatically:
 
 ```sh
 docker compose exec faultline faultline migrate up
-docker compose exec faultline faultline migrate version   # expect: 23 clean
+docker compose exec faultline faultline migrate version   # expect: 24 clean
 docker compose exec faultline faultline user create --email admin@example.com --name "Administrator"
 ```
 
@@ -143,7 +143,7 @@ the `sentry-debug-meta.properties` the plugin or `upload-proguard --write-proper
 generates. Source file names come from the SDK, or are guessed as `<Class>.java`, so
 a Kotlin frame can show a `.java` name.
 
-A mapping is capped at 100MB uncompressed and, once uploaded, is immutable: a
+A mapping is capped at 200MB uncompressed and, once uploaded, is immutable: a
 second upload naming the same mapping UUID with different content is rejected.
 There is no way to delete a stored mapping short of direct SQL.
 

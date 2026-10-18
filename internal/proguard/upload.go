@@ -18,10 +18,12 @@ import (
 )
 
 const (
-	// MaxDecodedBytes bounds one mapping's uncompressed size. Retracing
+	// MaxDecodedBytes bounds one mapping's uncompressed size, at the chunked
+	// upload's 200MB file limit: R8 mappings of real apps pass 90MB. Retracing
 	// decompresses and scans the whole mapping whenever a read needs a class
 	// the cache has not parsed yet, so this is also the ceiling on that cost.
-	MaxDecodedBytes = 100 << 20
+	// The proguard_mappings CHECK constraint holds the same number.
+	MaxDecodedBytes = 200 << 20
 
 	// maxZipEntries bounds how many entries a legacy upload archive may hold;
 	// sentry-cli puts one per mapping file on its command line.

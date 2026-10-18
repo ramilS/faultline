@@ -77,6 +77,21 @@ func TestProguardMappingRepository(t *testing.T) {
 		}
 	})
 
+	// The column CHECK and proguard.MaxDecodedBytes must agree: an R8 mapping
+	// of a real app passed the old 100MB cap.
+	t.Run("the stored size cap is proguard.MaxDecodedBytes", func(t *testing.T) {
+		atCap := proguardUpload(t, "at the cap")
+		atCap.UncompressedBytes = proguard.MaxDecodedBytes
+		if created, err := repository.Put(ctx, owner.ID, "11111111-2222-3333-4444-555555555555", atCap); err != nil || !created {
+			t.Fatalf("put at the cap created=%v err=%v", created, err)
+		}
+		overCap := proguardUpload(t, "over the cap")
+		overCap.UncompressedBytes = proguard.MaxDecodedBytes + 1
+		if _, err := repository.Put(ctx, owner.ID, "66666666-7777-8888-9999-000000000000", overCap); err == nil {
+			t.Fatal("put over the cap succeeded, want the CHECK constraint to refuse it")
+		}
+	})
+
 	t.Run("a uuid that was never uploaded or is malformed is not found", func(t *testing.T) {
 		for _, id := range []string{"00000000-0000-0000-0000-000000000000", "not-a-uuid", ""} {
 			if _, err := repository.Find(ctx, owner.ID, id); !errors.Is(err, proguard.ErrNotFound) {
