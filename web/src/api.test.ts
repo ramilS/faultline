@@ -121,6 +121,20 @@ test("revokeKey posts to the revoke route and resolves on 204", async () => {
   assert.equal(calls[0].init.method, "POST");
 });
 
+test("listArtifacts sends the optional type, limit, and opaque cursor", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(200, { artifacts: [], next_cursor: null }));
+  const api = createApi(fetch);
+
+  const page = await api.listArtifacts("mobile/app", { type: "native_debug_file", limit: 25, cursor: "opaque+/=" });
+
+  const url = new URL(calls[0].url, "http://x.test");
+  assert.equal(url.pathname, "/api/v1/projects/mobile%2Fapp/artifacts");
+  assert.equal(url.searchParams.get("type"), "native_debug_file");
+  assert.equal(url.searchParams.get("limit"), "25");
+  assert.equal(url.searchParams.get("cursor"), "opaque+/=");
+  assert.deepEqual(page, { artifacts: [], next_cursor: null });
+});
+
 test("non-ok responses raise an ApiError carrying the status and message", async () => {
   const { fetch } = recordingFetch(jsonResponse(409, { error: "project already exists" }));
   const api = createApi(fetch);

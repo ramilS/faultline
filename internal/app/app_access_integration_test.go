@@ -233,6 +233,7 @@ func startServerForMemberOfWebOnly(t *testing.T) (*httptest.Server, *memberFixtu
 		UserAdminService:     auth.NewAdministration(authRepositories.Users, authRepositories.Sessions, auth.ServiceOptions{}),
 		ProjectService:       project.NewService(projectRepositories.Projects, projectRepositories.Keys),
 		ArtifactService:      artifactauth.NewService(storagepostgres.NewArtifactTokenRepository(pool), artifactauth.Options{}),
+		ArtifactCatalog:      storagepostgres.NewArtifactCatalogRepository(pool),
 		SourceMaps:           storagepostgres.NewSourceMapRepository(pool),
 		IssueService:         issue.NewService(storagepostgres.NewIssueRepository(pool)),
 		GroupingRuleService:  grouping.NewRuleService(storagepostgres.NewGroupingRuleRepository(pool)),

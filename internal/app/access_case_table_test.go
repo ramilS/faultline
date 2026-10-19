@@ -16,6 +16,7 @@ type accessCase struct {
 var foreignProjectCases = []accessCase{
 	{pattern: "GET /api/v1/projects/{slug}/keys", method: "GET", target: "/api/v1/projects/secret/keys"},
 	{pattern: "GET /api/v1/projects/{slug}/artifact-tokens", method: "GET", target: "/api/v1/projects/secret/artifact-tokens"},
+	{pattern: "GET /api/v1/projects/{slug}/artifacts", method: "GET", target: "/api/v1/projects/secret/artifacts"},
 	{pattern: "GET /api/v1/projects/{slug}/grouping-rules", method: "GET", target: "/api/v1/projects/secret/grouping-rules"},
 	{pattern: "GET /api/v1/projects/{slug}/data-scrubbing", method: "GET", target: "/api/v1/projects/secret/data-scrubbing"},
 	{pattern: "GET /api/v1/projects/{slug}/issues", method: "GET", target: "/api/v1/projects/secret/issues"},

@@ -37,6 +37,45 @@ export interface CreatedArtifactToken {
   raw_token: string;
 }
 
+export type ArtifactType = "source_map" | "proguard_mapping" | "native_debug_file";
+
+interface ArtifactBase {
+  type: ArtifactType;
+  size_bytes: number;
+  uploaded_at: string;
+  last_used_at: string | null;
+}
+
+export interface SourceMapArtifact extends ArtifactBase {
+  type: "source_map";
+  content_sha256: string;
+  references: Array<{ release?: string; generated_path?: string; debug_id?: string }>;
+}
+
+export interface ProguardMappingArtifact extends ArtifactBase {
+  type: "proguard_mapping";
+  mapping_uuid: string;
+}
+
+export interface NativeDebugFileArtifact extends ArtifactBase {
+  type: "native_debug_file";
+  content_sha256: string;
+  references: Array<{ debug_id: string; cpu_name: string }>;
+}
+
+export type ProjectArtifact = SourceMapArtifact | ProguardMappingArtifact | NativeDebugFileArtifact;
+
+export interface ArtifactPage {
+  artifacts: ProjectArtifact[];
+  next_cursor: string | null;
+}
+
+export interface ListArtifactsOptions {
+  type?: ArtifactType;
+  limit?: number;
+  cursor?: string;
+}
+
 export interface CreateProjectInput {
   icon_emoji?: string;
   icon_image?: string;
@@ -491,6 +530,7 @@ export interface FaultlineApi {
   listArtifactTokens(slug: string): Promise<ArtifactToken[]>;
   createArtifactToken(slug: string, name: string): Promise<CreatedArtifactToken>;
   revokeArtifactToken(slug: string, tokenId: number): Promise<void>;
+  listArtifacts(slug: string, options?: ListArtifactsOptions): Promise<ArtifactPage>;
   /** A null slug lists every project the caller can read. */
   listIssues(slug: string | null, filters?: IssueFilters): Promise<IssuePage>;
   listTagKeys(slug: string): Promise<TagKeyFacet[]>;
@@ -591,6 +631,14 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
         method: "POST",
         expectNoContent: true
       });
+    },
+    listArtifacts: async (slug, options = {}) => {
+      const query = new URLSearchParams();
+      if (options.type) query.set("type", options.type);
+      if (options.limit) query.set("limit", String(options.limit));
+      if (options.cursor) query.set("cursor", options.cursor);
+      const suffix = query.size === 0 ? "" : `?${query.toString()}`;
+      return request<ArtifactPage>(fetchImpl, `/api/v1/projects/${encodeURIComponent(slug)}/artifacts${suffix}`, { method: "GET" });
     },
     listIssues: async (slug, filters = {}) => {
       const query = new URLSearchParams();

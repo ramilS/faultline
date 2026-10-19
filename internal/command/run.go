@@ -365,6 +365,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		UserAdminService:           userAdminService,
 		ProjectService:             projectService,
 		ArtifactService:            artifactService,
+		ArtifactCatalog:            database.ArtifactCatalog,
 		SourceMaps:                 database.SourceMaps,
 		ProguardMappings:           database.Proguard,
 		NativeDebugFiles:           database.NativeDebug,

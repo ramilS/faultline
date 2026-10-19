@@ -14,6 +14,7 @@ import (
 	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/api"
 	"github.com/ramilS/faultline/internal/artifactauth"
+	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
@@ -101,6 +102,12 @@ func (s *appProjectServiceStub) FindProject(context.Context, access.Scope, strin
 
 type appArtifactServiceStub struct {
 	authenticated artifactauth.Token
+}
+
+type appArtifactCatalogStub struct{}
+
+func (*appArtifactCatalogStub) List(context.Context, int64, artifactcatalog.ListOptions) (artifactcatalog.Page, error) {
+	return artifactcatalog.Page{Artifacts: []artifactcatalog.Artifact{}}, nil
 }
 
 func (*appArtifactServiceStub) Create(context.Context, int64, string) (artifactauth.Token, string, error) {
@@ -359,6 +366,7 @@ func testDependencies(t *testing.T) Dependencies {
 	dependencies.UserAdminService = &appUserAdminServiceStub{}
 	dependencies.ProjectService = &appProjectServiceStub{}
 	dependencies.ArtifactService = &appArtifactServiceStub{}
+	dependencies.ArtifactCatalog = &appArtifactCatalogStub{}
 	dependencies.SourceMaps = &appSourceMapRepositoryStub{}
 	dependencies.IssueService = &stubIssueService{}
 	dependencies.GroupingRuleService = &appGroupingRuleServiceStub{}

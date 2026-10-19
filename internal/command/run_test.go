@@ -20,6 +20,7 @@ import (
 	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/api"
 	"github.com/ramilS/faultline/internal/artifactauth"
+	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
@@ -77,14 +78,16 @@ func TestRunDispatchesServerAndClosesPool(t *testing.T) {
 func TestRunWiresArtifactServiceIntoHTTPApplication(t *testing.T) {
 	pool := &fakePool{}
 	artifacts := &artifactRepositoryStub{}
+	catalog := &artifactCatalogRepositoryStub{}
 	database := &runtimeDatabase{
-		Pool:           pool,
-		Users:          unknownUsers{},
-		Sessions:       authenticatedSessions{},
-		Projects:       projectsForArtifactRoute{},
-		Keys:           artifactRouteKeys{},
-		ArtifactTokens: artifacts,
-		Access:         accessRepositoryStub{},
+		Pool:            pool,
+		Users:           unknownUsers{},
+		Sessions:        authenticatedSessions{},
+		Projects:        projectsForArtifactRoute{},
+		Keys:            artifactRouteKeys{},
+		ArtifactTokens:  artifacts,
+		ArtifactCatalog: catalog,
+		Access:          accessRepositoryStub{},
 	}
 	dependencies := testDependencies(
 		func() (config.Config, error) { return validConfig(), nil },
@@ -92,12 +95,14 @@ func TestRunWiresArtifactServiceIntoHTTPApplication(t *testing.T) {
 			return database, nil
 		},
 		func(_ context.Context, _ string, handler http.Handler) error {
-			recorder := httptest.NewRecorder()
-			request := httptest.NewRequest(http.MethodGet, "/api/v1/projects/web/artifact-tokens", http.NoBody)
-			request.AddCookie(&http.Cookie{Name: api.SessionCookieName, Value: base64.RawURLEncoding.EncodeToString(make([]byte, 32))})
-			handler.ServeHTTP(recorder, request)
-			if recorder.Code != http.StatusOK {
-				t.Fatalf("artifact token list status = %d, want 200: %s", recorder.Code, recorder.Body.String())
+			for _, target := range []string{"/api/v1/projects/web/artifact-tokens", "/api/v1/projects/web/artifacts"} {
+				recorder := httptest.NewRecorder()
+				request := httptest.NewRequest(http.MethodGet, target, http.NoBody)
+				request.AddCookie(&http.Cookie{Name: api.SessionCookieName, Value: base64.RawURLEncoding.EncodeToString(make([]byte, 32))})
+				handler.ServeHTTP(recorder, request)
+				if recorder.Code != http.StatusOK {
+					t.Fatalf("artifact route %s status = %d, want 200: %s", target, recorder.Code, recorder.Body.String())
+				}
 			}
 			return nil
 		},
@@ -109,6 +114,9 @@ func TestRunWiresArtifactServiceIntoHTTPApplication(t *testing.T) {
 	}
 	if !artifacts.listed {
 		t.Fatal("artifact repository was not reached through assembled application")
+	}
+	if !catalog.listed {
+		t.Fatal("artifact catalog repository was not reached through assembled application")
 	}
 }
 
@@ -372,6 +380,13 @@ func (artifactRouteKeys) Revoke(context.Context, access.Scope, string, int64) er
 }
 
 type artifactRepositoryStub struct{ listed bool }
+
+type artifactCatalogRepositoryStub struct{ listed bool }
+
+func (r *artifactCatalogRepositoryStub) List(context.Context, int64, artifactcatalog.ListOptions) (artifactcatalog.Page, error) {
+	r.listed = true
+	return artifactcatalog.Page{Artifacts: []artifactcatalog.Artifact{}}, nil
+}
 
 func (*artifactRepositoryStub) Create(context.Context, artifactauth.Token) (artifactauth.Token, error) {
 	return artifactauth.Token{}, errors.New("unexpected create")

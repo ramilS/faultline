@@ -51,3 +51,10 @@ test("the project notifications entry is owner-only and sits before General", ()
     ["/shop/settings/notifications", "/shop/settings/general"]
   );
 });
+
+test("artifacts are discoverable beside artifact tokens for owners and members", () => {
+  for (const role of ["owner", "member"] as const) {
+    const paths = projectNavItems("shop", role).map((item) => item.to);
+    assert.equal(paths.indexOf("/shop/settings/artifacts"), paths.indexOf("/shop/settings/artifact-tokens") + 1);
+  }
+});

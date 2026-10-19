@@ -6,6 +6,7 @@ import (
 
 	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/artifactauth"
+	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
@@ -30,23 +31,24 @@ type databasePool interface {
 }
 
 type runtimeDatabase struct {
-	Pool           databasePool
-	Users          auth.UserRepository
-	Sessions       auth.SessionRepository
-	Identities     auth.IdentityRepository
-	Projects       project.ProjectRepository
-	Keys           project.KeyRepository
-	Issues         issue.Repository
-	Access         access.Repository
-	ArtifactTokens artifactauth.Repository
-	Groups         group.Repository
-	SourceMaps     sourcemap.Repository
-	Proguard       proguard.Repository
-	NativeDebug    nativedebug.Repository
-	UploadChunks   sentrycli.ChunkStore
-	Releases       sentrycli.ReleaseStore
-	IngestKeys     ingest.KeyStore
-	EventSink      storage.EventSink
+	Pool            databasePool
+	Users           auth.UserRepository
+	Sessions        auth.SessionRepository
+	Identities      auth.IdentityRepository
+	Projects        project.ProjectRepository
+	Keys            project.KeyRepository
+	Issues          issue.Repository
+	Access          access.Repository
+	ArtifactTokens  artifactauth.Repository
+	ArtifactCatalog artifactcatalog.Repository
+	Groups          group.Repository
+	SourceMaps      sourcemap.Repository
+	Proguard        proguard.Repository
+	NativeDebug     nativedebug.Repository
+	UploadChunks    sentrycli.ChunkStore
+	Releases        sentrycli.ReleaseStore
+	IngestKeys      ingest.KeyStore
+	EventSink       storage.EventSink
 	// ProjectSettings resolves per-project ingestion settings, shared by the
 	// ingest handler's non-durable dispatch and the durable feeder's replay so
 	// the two paths cannot disagree about a project's setting (see
@@ -127,6 +129,7 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		Issues:               issues,
 		Access:               storagepostgres.NewAccessRepository(pool),
 		ArtifactTokens:       storagepostgres.NewArtifactTokenRepository(pool),
+		ArtifactCatalog:      storagepostgres.NewArtifactCatalogRepository(pool),
 		Groups:               storagepostgres.NewGroupRepository(pool),
 		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactLimits...),
 		Proguard:             storagepostgres.NewProguardMappingRepository(pool, artifactLimits...),

@@ -1,6 +1,7 @@
 import {
   BellRing,
   Bug,
+  Boxes,
   FileKey,
   KeyRound,
   LayoutGrid,
@@ -53,6 +54,7 @@ export function projectNavItems(slug: string, role: UserRole): readonly NavItem[
     { to: `/${slug}/issues`, label: "Issues", icon: Bug },
     { to: `/${slug}/settings/keys`, label: "Ingest keys", icon: KeyRound },
     { to: `/${slug}/settings/artifact-tokens`, label: "Artifact tokens", icon: FileKey },
+    { to: `/${slug}/settings/artifacts`, label: "Artifacts", icon: Boxes },
     { to: `/${slug}/settings/grouping`, label: "Grouping rules", icon: ListFilter },
     { to: `/${slug}/settings/data-scrubbing`, label: "Data scrubbing", icon: ShieldCheck }
   ];

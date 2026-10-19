@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/ramilS/faultline/internal/api"
+	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
 	"github.com/ramilS/faultline/internal/dashboard"
 	nativedebug "github.com/ramilS/faultline/internal/native"
@@ -28,6 +29,7 @@ type Dependencies struct {
 	UserAdminService           api.UserAdminService
 	ProjectService             api.ProjectService
 	ArtifactService            api.ArtifactService
+	ArtifactCatalog            artifactcatalog.Repository
 	SourceMaps                 sourcemap.Repository
 	ProguardMappings           proguard.Repository
 	NativeDebugFiles           nativedebug.Repository

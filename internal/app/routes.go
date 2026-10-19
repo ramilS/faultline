@@ -136,20 +136,25 @@ func projectRoutes(dependencies Dependencies) []route {
 	}
 }
 
-// artifactRoutes covers artifact-token management and source-map upload. It
-// registers nothing when no artifact service is wired, so narrow tests can
-// assemble a minimal app.
+// artifactRoutes covers the read-only artifact inventory, artifact-token
+// management, and source-map upload. Each surface registers only when its own
+// dependencies are wired, so narrow tests can still assemble a minimal app.
 func artifactRoutes(dependencies Dependencies) []route {
+	var routes []route
+	if dependencies.ArtifactCatalog != nil && dependencies.ProjectService != nil {
+		catalog := api.NewArtifactCatalogHandler(dependencies.ArtifactCatalog, dependencies.ProjectService, api.Options{ReportError: dependencies.ReportError})
+		routes = append(routes, route{pattern: "GET /api/v1/projects/{slug}/artifacts", gate: gateMember, handler: http.HandlerFunc(catalog.List)})
+	}
 	if dependencies.ArtifactService == nil {
-		return nil
+		return routes
 	}
 	artifactHandler := api.NewArtifactHandler(dependencies.ArtifactService, dependencies.ProjectService, dependencies.SourceMaps, api.Options{ReportError: dependencies.ReportError})
-	return []route{
-		{pattern: "GET /api/v1/projects/{slug}/artifact-tokens", gate: gateMember, handler: http.HandlerFunc(artifactHandler.ListTokens)},
-		{pattern: "POST /api/v1/projects/{slug}/artifact-tokens", gate: gateOwner, handler: http.HandlerFunc(artifactHandler.CreateToken)},
-		{pattern: "POST /api/v1/projects/{slug}/artifact-tokens/{id}/revoke", gate: gateOwner, handler: http.HandlerFunc(artifactHandler.RevokeToken)},
-		{pattern: "POST /api/v1/projects/{slug}/sourcemaps", gate: gatePublic, handler: http.HandlerFunc(artifactHandler.UploadSourceMap)},
-	}
+	return append(routes,
+		route{pattern: "GET /api/v1/projects/{slug}/artifact-tokens", gate: gateMember, handler: http.HandlerFunc(artifactHandler.ListTokens)},
+		route{pattern: "POST /api/v1/projects/{slug}/artifact-tokens", gate: gateOwner, handler: http.HandlerFunc(artifactHandler.CreateToken)},
+		route{pattern: "POST /api/v1/projects/{slug}/artifact-tokens/{id}/revoke", gate: gateOwner, handler: http.HandlerFunc(artifactHandler.RevokeToken)},
+		route{pattern: "POST /api/v1/projects/{slug}/sourcemaps", gate: gatePublic, handler: http.HandlerFunc(artifactHandler.UploadSourceMap)},
+	)
 }
 
 // groupingRuleRoutes covers grouping-rule management. It registers nothing
