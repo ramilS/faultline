@@ -31,7 +31,8 @@ func WithDebugFileRetention(keep int) ArtifactStoreOption {
 
 // artifactLimits bounds one project's stored artifacts. A project's uploads
 // take an advisory lock so two concurrent uploads cannot both pass the quota
-// check and together overshoot it, nor race each other's eviction.
+// check and together overshoot it, race each other's eviction, or race
+// source-map orphan cleanup.
 type artifactLimits struct {
 	quotaBytes     int64
 	keepDebugFiles int
@@ -49,9 +50,6 @@ func newArtifactLimits(options []ArtifactStoreOption) artifactLimits {
 // until tx ends. Project ids are bigint; see lockProjectForRuleMutation for why
 // truncating to int32 is safe here.
 func (l artifactLimits) lock(ctx context.Context, tx pgx.Tx, projectID int64) error {
-	if l.quotaBytes <= 0 && l.keepDebugFiles <= 0 {
-		return nil
-	}
 	if _, err := tx.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, artifactQuotaLockClassID, int32(projectID)); err != nil {
 		return fmt.Errorf("lock project artifact storage: %w", err)
 	}

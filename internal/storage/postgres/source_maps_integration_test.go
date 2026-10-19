@@ -340,6 +340,207 @@ func TestPutBundleWritesReleasePathRefWithoutDebugID(t *testing.T) {
 	}
 }
 
+func TestPutBundleReclaimsReplacedSourceMapBlobs(t *testing.T) {
+	const debugID = "1e2d0d0a-6d5f-4a2b-9d1e-0a0b0c0d0e0f"
+
+	t.Run("debug id replacement", func(t *testing.T) {
+		repository, pool, projectID := newSourceMapFixture(t)
+		ctx := t.Context()
+		oldUpload := sourceMapUpload("old debug map")
+		newUpload := sourceMapUpload("new debug map")
+
+		if err := repository.PutBundle(ctx, projectID, "", []sourcemap.BundleEntry{{DebugID: debugID, Upload: oldUpload}}); err != nil {
+			t.Fatalf("put old bundle: %v", err)
+		}
+		if err := repository.PutBundle(ctx, projectID, "", []sourcemap.BundleEntry{{DebugID: debugID, Upload: newUpload}}); err != nil {
+			t.Fatalf("replace bundle: %v", err)
+		}
+
+		found, err := repository.FindByDebugID(ctx, projectID, debugID)
+		if err != nil {
+			t.Fatalf("find replacement: %v", err)
+		}
+		if found.ContentSHA256 != newUpload.SHA256 {
+			t.Fatalf("replacement hash = %x, want %x", found.ContentSHA256, newUpload.SHA256)
+		}
+		assertSourceMapBlobCount(t, ctx, pool, projectID, 1)
+	})
+
+	t.Run("release path replacement", func(t *testing.T) {
+		repository, pool, projectID := newSourceMapFixture(t)
+		ctx := t.Context()
+		oldUpload := sourceMapUpload("old release map")
+		newUpload := sourceMapUpload("new release map")
+
+		if err := repository.PutBundle(ctx, projectID, "web@1", []sourcemap.BundleEntry{{GeneratedPath: "/app.js", Upload: oldUpload}}); err != nil {
+			t.Fatalf("put old bundle: %v", err)
+		}
+		if err := repository.PutBundle(ctx, projectID, "web@1", []sourcemap.BundleEntry{{GeneratedPath: "/app.js", Upload: newUpload}}); err != nil {
+			t.Fatalf("replace bundle: %v", err)
+		}
+
+		found, err := repository.Find(ctx, projectID, "web@1", "/app.js")
+		if err != nil {
+			t.Fatalf("find replacement: %v", err)
+		}
+		if found.ContentSHA256 != newUpload.SHA256 {
+			t.Fatalf("replacement hash = %x, want %x", found.ContentSHA256, newUpload.SHA256)
+		}
+		assertSourceMapBlobCount(t, ctx, pool, projectID, 1)
+	})
+}
+
+func TestPutBundlePreservesBlobWithAnotherLiveRef(t *testing.T) {
+	repository, pool, projectID := newSourceMapFixture(t)
+	ctx := t.Context()
+	const debugID = "1e2d0d0a-6d5f-4a2b-9d1e-0a0b0c0d0e0f"
+	oldUpload := sourceMapUpload("shared old map")
+	newUpload := sourceMapUpload("shared new map")
+
+	if err := repository.PutBundle(ctx, projectID, "web@1", []sourcemap.BundleEntry{{
+		DebugID: debugID, GeneratedPath: "/app.js", Upload: oldUpload,
+	}}); err != nil {
+		t.Fatalf("put shared bundle: %v", err)
+	}
+	if err := repository.PutBundle(ctx, projectID, "", []sourcemap.BundleEntry{{DebugID: debugID, Upload: newUpload}}); err != nil {
+		t.Fatalf("move debug ref: %v", err)
+	}
+
+	byDebugID, err := repository.FindByDebugID(ctx, projectID, debugID)
+	if err != nil {
+		t.Fatalf("find by debug id: %v", err)
+	}
+	byPath, err := repository.Find(ctx, projectID, "web@1", "/app.js")
+	if err != nil {
+		t.Fatalf("find by path: %v", err)
+	}
+	if byDebugID.ContentSHA256 != newUpload.SHA256 || byPath.ContentSHA256 != oldUpload.SHA256 {
+		t.Fatalf("hashes after partial move = debug %x path %x", byDebugID.ContentSHA256, byPath.ContentSHA256)
+	}
+	assertSourceMapBlobCount(t, ctx, pool, projectID, 2)
+
+	if err := repository.PutBundle(ctx, projectID, "web@1", []sourcemap.BundleEntry{{GeneratedPath: "/app.js", Upload: newUpload}}); err != nil {
+		t.Fatalf("move final ref: %v", err)
+	}
+	assertSourceMapBlobCount(t, ctx, pool, projectID, 1)
+}
+
+func TestPutSweepsHistoricalOrphansOnlyForItsProject(t *testing.T) {
+	repository, pool, projectID := newSourceMapFixture(t)
+	ctx := t.Context()
+	other := createProject(t, ctx, storagepostgres.NewProjectRepository(pool).Projects, "source-map-orphan-other")
+	orphan := sourceMapUpload("historical orphan")
+
+	for _, id := range []int64{projectID, other.ID} {
+		if _, err := pool.Exec(ctx, `
+			INSERT INTO source_map_blobs (project_id, content_sha256, compressed_map, uncompressed_bytes)
+			VALUES ($1, $2, $3, $4)
+		`, id, orphan.SHA256[:], orphan.Compressed, len(orphan.JSON)); err != nil {
+			t.Fatalf("insert orphan for project %d: %v", id, err)
+		}
+	}
+
+	if _, _, err := repository.Put(ctx, projectID, "web@1", "/app.js", sourceMapUpload("live map")); err != nil {
+		t.Fatalf("put source map: %v", err)
+	}
+	assertSourceMapBlobCount(t, ctx, pool, projectID, 1)
+	assertSourceMapBlobCount(t, ctx, pool, other.ID, 1)
+}
+
+func TestConcurrentSourceMapWritesKeepLiveRefsWithoutLimits(t *testing.T) {
+	repository, pool, projectID := newSourceMapFixture(t)
+	ctx := t.Context()
+	oldUpload := sourceMapUpload("concurrent old map")
+	newUpload := sourceMapUpload("concurrent new map")
+
+	if _, _, err := repository.Put(ctx, projectID, "web@1", "/old.js", oldUpload); err != nil {
+		t.Fatalf("put initial map: %v", err)
+	}
+
+	blocker, err := pool.Begin(ctx)
+	if err != nil {
+		t.Fatalf("begin blocker: %v", err)
+	}
+	defer blocker.Rollback(ctx)
+	if _, err := blocker.Exec(ctx, `SELECT pg_advisory_xact_lock($1, $2)`, int32(0x61525100), int32(projectID)); err != nil {
+		t.Fatalf("lock project artifacts: %v", err)
+	}
+
+	results := make(chan error, 2)
+	go func() {
+		results <- repository.PutBundle(ctx, projectID, "web@1", []sourcemap.BundleEntry{{GeneratedPath: "/old.js", Upload: newUpload}})
+	}()
+	go func() {
+		_, _, err := repository.Put(ctx, projectID, "web@2", "/reuse.js", oldUpload)
+		results <- err
+	}()
+
+	waitForAdvisoryLockWaiters(t, ctx, pool, projectID, 2)
+	if err := blocker.Commit(ctx); err != nil {
+		t.Fatalf("release blocker: %v", err)
+	}
+	resultTimeout := time.NewTimer(5 * time.Second)
+	defer resultTimeout.Stop()
+	for range 2 {
+		select {
+		case err := <-results:
+			if err != nil {
+				t.Fatalf("concurrent write: %v", err)
+			}
+		case <-resultTimeout.C:
+			t.Fatal("timed out waiting for concurrent source-map writes")
+		}
+	}
+
+	replaced, err := repository.Find(ctx, projectID, "web@1", "/old.js")
+	if err != nil {
+		t.Fatalf("find replaced map: %v", err)
+	}
+	reused, err := repository.Find(ctx, projectID, "web@2", "/reuse.js")
+	if err != nil {
+		t.Fatalf("find reused map: %v", err)
+	}
+	if replaced.ContentSHA256 != newUpload.SHA256 || reused.ContentSHA256 != oldUpload.SHA256 {
+		t.Fatalf("hashes after concurrent writes = replaced %x reused %x", replaced.ContentSHA256, reused.ContentSHA256)
+	}
+	assertSourceMapBlobCount(t, ctx, pool, projectID, 2)
+}
+
+func waitForAdvisoryLockWaiters(t *testing.T, ctx context.Context, pool *pgxpool.Pool, projectID int64, want int) {
+	t.Helper()
+	deadline := time.Now().Add(5 * time.Second)
+	for {
+		var waiters int
+		if err := pool.QueryRow(ctx, `
+			SELECT count(*) FROM pg_locks
+			WHERE locktype = 'advisory'
+			  AND classid = $1::int::oid
+			  AND objid = $2::int::oid
+			  AND NOT granted
+		`, int32(0x61525100), int32(projectID)).Scan(&waiters); err != nil {
+			t.Fatalf("inspect advisory lock waiters: %v", err)
+		}
+		if waiters == want {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("advisory lock waiters = %d, want %d", waiters, want)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+}
+
+func assertSourceMapBlobCount(t *testing.T, ctx context.Context, pool *pgxpool.Pool, projectID int64, want int) {
+	t.Helper()
+	var count int
+	if err := pool.QueryRow(ctx, `SELECT count(*) FROM source_map_blobs WHERE project_id = $1`, projectID).Scan(&count); err != nil {
+		t.Fatalf("count source-map blobs: %v", err)
+	}
+	if count != want {
+		t.Fatalf("source-map blobs = %d, want %d", count, want)
+	}
+}
+
 // debug_id is a Postgres uuid column: a malformed id must miss like any other
 // unknown one, not surface the driver's parse error to a caller whose only
 // failure check is errors.Is(err, ErrNotFound).

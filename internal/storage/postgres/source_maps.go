@@ -42,6 +42,12 @@ func (repository *sourceMapRepository) Put(ctx context.Context, projectID int64,
 	if err := repository.limits.lock(ctx, tx, projectID); err != nil {
 		return sourcemap.Map{}, false, err
 	}
+	// Sweep only blobs left orphaned by earlier transactions. This must happen
+	// before upsertBlob, while this transaction has not created a temporarily
+	// unreferenced blob of its own.
+	if err := deleteOrphanSourceMapBlobs(ctx, tx, projectID); err != nil {
+		return sourcemap.Map{}, false, err
+	}
 	releaseID, err := upsertRelease(ctx, tx, projectID, version)
 	if err != nil {
 		return sourcemap.Map{}, false, err
@@ -128,6 +134,22 @@ func upsertBlob(ctx context.Context, tx pgx.Tx, projectID int64, upload sourcema
 		return 0, false, fmt.Errorf("upsert source map blob: %w", err)
 	}
 	return blobID, created, nil
+}
+
+// deleteOrphanSourceMapBlobs reclaims source-map content that no live address
+// references. Callers hold the project artifact advisory lock, so another
+// source-map write cannot add a ref while this anti-reference delete runs.
+func deleteOrphanSourceMapBlobs(ctx context.Context, tx pgx.Tx, projectID int64) error {
+	if _, err := tx.Exec(ctx, `
+		DELETE FROM source_map_blobs AS b
+		WHERE b.project_id = $1
+		  AND NOT EXISTS (
+			SELECT 1 FROM source_map_refs AS r WHERE r.blob_id = b.id
+		  )
+	`, projectID); err != nil {
+		return fmt.Errorf("delete orphan source map blobs: %w", err)
+	}
+	return nil
 }
 
 // FindByDebugID loads a debug-id-addressed map within one project. debug_id is
@@ -218,6 +240,11 @@ func (repository *sourceMapRepository) PutBundle(ctx context.Context, projectID 
 		}
 	}
 
+	// An overwrite can move the final debug-id or release/path ref away from an
+	// older blob. Reclaim it before measuring quota so only live content counts.
+	if err := deleteOrphanSourceMapBlobs(ctx, tx, projectID); err != nil {
+		return err
+	}
 	if blobCreated {
 		if err := repository.limits.enforce(ctx, tx, projectID); err != nil {
 			return fmt.Errorf("put bundle: %w", err)
