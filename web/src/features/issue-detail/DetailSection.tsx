@@ -28,7 +28,7 @@ export function DetailSection({
   id
 }: DetailSectionProps) {
   return (
-    // The scroll margin tracks the issue header's measured height rather
+    // The scroll margin tracks the measured header and section bar rather
     // than a literal: see stickyHeader.ts. Inline because the value is a
     // calc() over a runtime custom property, not one of Tailwind's steps.
     <Card id={id} className={cn("gap-4 py-4", className)} style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}>

@@ -29,7 +29,7 @@ export function RawPayload({ payload }: RawPayloadProps) {
   const serialised = useMemo(() => (open ? JSON.stringify(payload, null, 2) : ""), [open, payload]);
 
   return (
-    // The scroll margin tracks the issue header's measured height rather
+    // The scroll margin tracks the measured header and section bar rather
     // than a literal: see stickyHeader.ts. Inline because the value is a
     // calc() over a runtime custom property, not one of Tailwind's steps.
     <Collapsible

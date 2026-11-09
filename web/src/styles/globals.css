@@ -75,6 +75,16 @@
   --frame-focus-surface: oklch(0.55 0.19 29 / 14%);
 }
 
+:root {
+  --app-top-bar-height: 0px;
+}
+
+@media (width < 64rem) {
+  :root {
+    --app-top-bar-height: 3.5rem;
+  }
+}
+
 .dark {
   --background: oklch(0.165 0.004 285.9);
   --foreground: oklch(0.97 0 0);

@@ -9,7 +9,7 @@ import { Sparkline } from "@/components/Sparkline";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useProjectName } from "@/features/projects/useProjectName";
 
-import { STICKY_HEADER_HEIGHT_PROPERTY, stickyHeaderHeightValue } from "./stickyHeader";
+import { publishPinnedHeight, STICKY_HEADER_HEIGHT_PROPERTY } from "./stickyHeader";
 
 interface IssueHeaderProps {
   issue: IssueSummary;
@@ -46,19 +46,14 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
     }
     const publish = () => {
       const pinned = getComputedStyle(element).position === "sticky";
-      const measured = pinned ? stickyHeaderHeightValue(element.offsetHeight) : null;
-      if (measured === null) {
-        document.documentElement.style.removeProperty(STICKY_HEADER_HEIGHT_PROPERTY);
-      } else {
-        document.documentElement.style.setProperty(STICKY_HEADER_HEIGHT_PROPERTY, measured);
-      }
+      publishPinnedHeight(STICKY_HEADER_HEIGHT_PROPERTY, pinned ? element.offsetHeight : null);
     };
     publish();
     const observer = new ResizeObserver(publish);
     observer.observe(element);
     return () => {
       observer.disconnect();
-      document.documentElement.style.removeProperty(STICKY_HEADER_HEIGHT_PROPERTY);
+      publishPinnedHeight(STICKY_HEADER_HEIGHT_PROPERTY, null);
     };
   }, []);
 

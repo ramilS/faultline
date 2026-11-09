@@ -104,7 +104,7 @@ export function AppShell() {
       </aside>
 
       <div className="flex min-w-0 flex-1 flex-col">
-        <div className="bg-background/80 sticky top-0 z-20 flex items-center gap-2 border-b px-4 py-2.5 backdrop-blur lg:hidden">
+        <div className="bg-background/80 sticky top-0 z-20 flex h-(--app-top-bar-height) items-center gap-2 border-b px-4 backdrop-blur lg:hidden">
           <span className="text-sm font-semibold tracking-tight">Faultline</span>
           <div className="min-w-0 flex-1">
             <ProjectSwitcher />

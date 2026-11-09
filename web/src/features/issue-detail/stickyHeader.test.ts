@@ -1,18 +1,25 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import { SECTION_SCROLL_MARGIN, stickyHeaderHeightValue } from "./stickyHeader.ts";
+import { pinnedHeightValue, SECTION_NAV_TOP, SECTION_SCROLL_MARGIN } from "./stickyHeader.ts";
 
 test("a measured height is published in pixels", () => {
-  assert.equal(stickyHeaderHeightValue(212), "212px");
+  assert.equal(pinnedHeightValue(212), "212px");
 });
 
-test("an unlaid-out header publishes nothing, so the fallback survives", () => {
-  assert.equal(stickyHeaderHeightValue(0), null);
-  assert.equal(stickyHeaderHeightValue(-1), null);
-  assert.equal(stickyHeaderHeightValue(Number.NaN), null);
+test("an unlaid-out band publishes nothing, so the fallback survives", () => {
+  assert.equal(pinnedHeightValue(0), null);
+  assert.equal(pinnedHeightValue(-1), null);
+  assert.equal(pinnedHeightValue(Number.NaN), null);
 });
 
-test("a section's scroll margin falls back to a real offset when nothing was measured", () => {
-  assert.equal(SECTION_SCROLL_MARGIN, "calc(var(--issue-header-height, 5rem) + 0.5rem)");
+test("the section bar sticks under the pinned header, else under the shell's top bar", () => {
+  assert.equal(SECTION_NAV_TOP, "var(--issue-header-height, var(--app-top-bar-height, 0px))");
+});
+
+test("a section's scroll margin clears the header and the section bar", () => {
+  assert.equal(
+    SECTION_SCROLL_MARGIN,
+    "calc(var(--issue-header-height, var(--app-top-bar-height, 0px)) + var(--issue-section-nav-height, 2.75rem) + 0.5rem)"
+  );
 });
