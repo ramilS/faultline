@@ -62,11 +62,12 @@ func NewResolver(repo Repository, fallback sourcemap.Resolver) sourcemap.Resolve
 }
 
 type payloadFrame struct {
-	InstructionAddr address `json:"instruction_addr"`
-	Function        string  `json:"function"`
-	Filename        string  `json:"filename"`
-	Lineno          *int    `json:"lineno"`
-	InApp           bool    `json:"in_app"`
+	InstructionAddr address         `json:"instruction_addr"`
+	Function        string          `json:"function"`
+	Filename        string          `json:"filename"`
+	Lineno          *int            `json:"lineno"`
+	InApp           bool            `json:"in_app"`
+	Vars            json.RawMessage `json:"vars"`
 }
 
 type payloadException struct {
@@ -120,7 +121,10 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 		exception := &sourcemap.Exception{Type: value.Type, Value: value.Value, Cause: head}
 		if value.Stacktrace != nil {
 			for _, source := range slices.Backward(value.Stacktrace.Frames) {
-				frame := sourcemap.Frame{Generated: sourcemap.Position{Function: source.Function, Filename: source.Filename, InApp: source.InApp}}
+				frame := sourcemap.Frame{
+					Generated: sourcemap.Position{Function: source.Function, Filename: source.Filename, InApp: source.InApp},
+					Vars:      sourcemap.FrameVars(source.Vars),
+				}
 				if source.Lineno != nil {
 					frame.Generated.Line = *source.Lineno
 				}

@@ -140,7 +140,7 @@ describe("ProjectsPage create-project platform picker", () => {
         slug: "app",
         name: "App",
         platform: value,
-        created_at: "2026-07-13T08:00:00Z"
+        source_link_template: "", source_stack_root: "", source_root: "", created_at: "2026-07-13T08:00:00Z"
       });
       openCreateDialog();
       fireEvent.change(screen.getByLabelText("Name"), { target: { value: "App" } });
@@ -169,7 +169,7 @@ describe("ProjectsPage create-project slug", () => {
   });
 
   it("sends the selected project emoji when creating a project", () => {
-    mockedCreateProject.mockResolvedValue({ id: 9, slug: "shop", name: "Shop", platform: "javascript", created_at: "2026-07-13T08:00:00Z" });
+    mockedCreateProject.mockResolvedValue({ id: 9, slug: "shop", name: "Shop", platform: "javascript", source_link_template: "", source_stack_root: "", source_root: "", created_at: "2026-07-13T08:00:00Z" });
     openCreateDialog();
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Shop" } });
     fireEvent.click(screen.getByRole("button", { name: "Use 🛒" }));
@@ -203,7 +203,7 @@ describe("ProjectsPage create-project slug", () => {
       slug: "shop-app",
       name: "Shop App",
       platform: "javascript",
-      created_at: "2026-07-13T08:00:00Z"
+      source_link_template: "", source_stack_root: "", source_root: "", created_at: "2026-07-13T08:00:00Z"
     });
     render(
       <MemoryRouter>

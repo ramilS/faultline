@@ -768,6 +768,7 @@ type symbolicatedFrameResponse struct {
 	Generated symbolicatedPositionResponse  `json:"generated"`
 	Original  *symbolicatedPositionResponse `json:"original"`
 	Context   []sourceContextLineResponse   `json:"context"`
+	Vars      json.RawMessage               `json:"vars"`
 }
 
 type symbolicatedExceptionResponse struct {
@@ -1139,6 +1140,7 @@ func toSymbolicatedFrameResponse(source sourcemap.Frame) symbolicatedFrameRespon
 		Generated: toSymbolicatedPositionResponse(source.Generated),
 		Original:  toSymbolicatedPositionPointer(source.Original),
 		Context:   contextLines,
+		Vars:      source.Vars,
 	}
 }
 

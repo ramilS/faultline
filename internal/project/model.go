@@ -40,13 +40,14 @@ var (
 
 // Project is a configured application that can receive ingest events.
 type Project struct {
-	IconEmoji string
-	IconImage string
-	ID        int64
-	Slug      string
-	Name      string
-	Platform  string
-	CreatedAt time.Time
+	IconEmoji   string
+	IconImage   string
+	ID          int64
+	Slug        string
+	Name        string
+	Platform    string
+	SourceLinks SourceLinks
+	CreatedAt   time.Time
 }
 
 // Key is the persisted public ingest credential and its admission settings.

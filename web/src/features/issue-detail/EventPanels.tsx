@@ -1,7 +1,7 @@
 import { Bug } from "lucide-react";
 import { useCallback, useMemo } from "react";
 
-import type { EventDetail, EventSummary } from "@/api";
+import type { EventDetail, EventSummary, SourceLinkSetting } from "@/api";
 import { api } from "@/apiClient";
 import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
@@ -21,6 +21,7 @@ import { useAsyncResource } from "@/hooks/useAsyncResource";
 interface EventPanelsProps {
   /** The event to show. Null before the navigator's first page lands. */
   selectedEvent: EventSummary | null;
+  sourceLinks: SourceLinkSetting | null;
 }
 
 /**
@@ -33,19 +34,20 @@ interface EventPanelsProps {
  * keyed on its id so switching events remounts the resource instead of
  * patching a load meant for a different event.
  */
-export function EventPanels({ selectedEvent }: EventPanelsProps) {
+export function EventPanels({ selectedEvent, sourceLinks }: EventPanelsProps) {
   if (selectedEvent === null) {
     return <Skeleton className="h-64 w-full" />;
   }
 
-  return <LoadedEventPanels key={selectedEvent.event_id} eventId={selectedEvent.event_id} />;
+  return <LoadedEventPanels key={selectedEvent.event_id} eventId={selectedEvent.event_id} sourceLinks={sourceLinks} />;
 }
 
 interface LoadedEventPanelsProps {
   eventId: string;
+  sourceLinks: SourceLinkSetting | null;
 }
 
-function LoadedEventPanels({ eventId }: LoadedEventPanelsProps) {
+function LoadedEventPanels({ eventId, sourceLinks }: LoadedEventPanelsProps) {
   const load = useCallback(() => api.getEvent(eventId), [eventId]);
   const { state, reload } = useAsyncResource(load);
 
@@ -61,11 +63,12 @@ function LoadedEventPanels({ eventId }: LoadedEventPanelsProps) {
     );
   }
 
-  return <EventPanelStack event={state.value} />;
+  return <EventPanelStack event={state.value} sourceLinks={sourceLinks} />;
 }
 
 interface EventPanelStackProps {
   event: EventDetail;
+  sourceLinks: SourceLinkSetting | null;
 }
 
 /**
@@ -77,7 +80,7 @@ interface EventPanelStackProps {
  * so parsing per consumer re-walks an attacker-sized `tags`/`extra` map once
  * per consumer, on every render. One memoized parse feeds all three.
  */
-function EventPanelStack({ event }: EventPanelStackProps) {
+function EventPanelStack({ event, sourceLinks }: EventPanelStackProps) {
   const parsed = useMemo(() => parseEvent(event), [event]);
 
   return (
@@ -96,7 +99,7 @@ function EventPanelStack({ event }: EventPanelStackProps) {
           />
         </DetailSection>
       ) : (
-        <StackTrace exception={event.symbolicated_exception} />
+        <StackTrace exception={event.symbolicated_exception} release={event.release} sourceLinks={sourceLinks} />
       )}
 
       <Breadcrumbs event={event} />

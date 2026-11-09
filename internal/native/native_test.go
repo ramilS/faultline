@@ -350,3 +350,27 @@ func TestResolverRecordsAnImageAsUsedOncePerInterval(t *testing.T) {
 		t.Fatalf("marked %v err=%v, want the failed record retried", repository.marked, err)
 	}
 }
+
+func TestResolverCarriesFrameVariablesOntoTheResolvedFrame(t *testing.T) {
+	upload, err := decodeBytes(minimalMachO(macho.CpuArm64, [16]byte{1}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	stored := Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}
+	payload := []byte(`{"exception":{"values":[{"type":"Crash","value":"boom","stacktrace":{"frames":[` +
+		`{"instruction_addr":"0x100010","in_app":true,"vars":{"count":3}},` +
+		`{"instruction_addr":"0x900000","in_app":true,"vars":{"other":true}}` +
+		`]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)
+
+	got, err := NewResolver(memoryRepository{stored: stored}, &fallbackResolver{}).Resolve(t.Context(), sourcemap.EventInput{ProjectID: 7, Payload: payload})
+
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got.Frames) != 2 || got.Frames[1].Original == nil {
+		t.Fatalf("frames = %+v", got.Frames)
+	}
+	if string(got.Frames[1].Vars) != `{"count":3}` || string(got.Frames[0].Vars) != `{"other":true}` {
+		t.Fatalf("vars = %s and %s", got.Frames[1].Vars, got.Frames[0].Vars)
+	}
+}

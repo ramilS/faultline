@@ -38,6 +38,21 @@ type projectServiceStub struct {
 	updateErr    error
 	updateSlug   string
 	updateInputs []project.UpdateProject
+	linkUpdates  []project.SourceLinks
+}
+
+func (s *projectServiceStub) UpdateSourceLinks(_ context.Context, slug string, links project.SourceLinks) (project.Project, error) {
+	s.updateSlug = slug
+	s.linkUpdates = append(s.linkUpdates, links)
+	if s.updateErr != nil {
+		return project.Project{}, s.updateErr
+	}
+	if err := project.ValidateSourceLinks(links); err != nil {
+		return project.Project{}, err
+	}
+	updated := s.updated
+	updated.SourceLinks = links
+	return updated, nil
 }
 
 func (s *projectServiceStub) UpdateProject(_ context.Context, slug string, input project.UpdateProject) (project.Project, error) {
@@ -504,6 +519,7 @@ func newProjectsRoutesApp(t *testing.T, user auth.User, service ProjectService) 
 	mux.Handle("GET /api/v1/projects", authHandler.RequireSession(http.HandlerFunc(projectHandler.ListProjects)))
 	mux.Handle("POST /api/v1/projects", owner(projectHandler.CreateProject))
 	mux.Handle("PATCH /api/v1/projects/{slug}", owner(projectHandler.UpdateProject))
+	mux.Handle("PUT /api/v1/projects/{slug}/source-links", owner(projectHandler.UpdateSourceLinks))
 	mux.Handle("GET /api/v1/projects/{slug}/keys", authHandler.RequireSession(http.HandlerFunc(projectHandler.ListKeys)))
 	mux.Handle("POST /api/v1/projects/{slug}/keys", owner(projectHandler.CreateKey))
 	mux.Handle("POST /api/v1/projects/{slug}/keys/{id}/revoke", owner(projectHandler.RevokeKey))

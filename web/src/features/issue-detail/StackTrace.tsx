@@ -1,7 +1,7 @@
 import { ChevronRight, Layers } from "lucide-react";
 import { useMemo, useState } from "react";
 
-import type { SymbolicatedException } from "@/api";
+import type { SourceLinkSetting, SymbolicatedException, SymbolicatedFrame } from "@/api";
 import { EmptyState } from "@/components/EmptyState";
 import { cn } from "@/lib/utils";
 import { flattenCauses } from "@/stacktrace";
@@ -13,6 +13,7 @@ import {
   defaultExpandedFrame,
   frameRows,
   initialFrameFilter,
+  sourceLink,
   stackTraceText,
   type FrameFilter,
   type FrameRow
@@ -20,7 +21,13 @@ import {
 
 interface StackTraceProps {
   exception: SymbolicatedException;
+  /** The event's release, substituted into a source-link template's `{release}`. */
+  release: string | null;
+  /** The project's source-link setting, or null while the project list is not loaded. */
+  sourceLinks: SourceLinkSetting | null;
 }
+
+type LinkFor = (frame: SymbolicatedFrame) => string | null;
 
 /** The structured trace under a frame filter, or the plain text a reader would paste. */
 type StackTraceView = FrameFilter | "raw";
@@ -61,8 +68,9 @@ function toggled(keys: ReadonlySet<string>, key: string): ReadonlySet<string> {
  * mount this with a key tied to the event: a different event deserves its own
  * defaults rather than inheriting the previous one's.
  */
-export function StackTrace({ exception }: StackTraceProps) {
+export function StackTrace({ exception, release, sourceLinks }: StackTraceProps) {
   const chain = useMemo(() => flattenCauses(exception), [exception]);
+  const linkFor: LinkFor = (frame) => (sourceLinks === null ? null : sourceLink(frame, release, sourceLinks));
   const [view, setView] = useState<StackTraceView>(() => initialFrameFilter(chain));
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => initiallyExpanded(chain));
   const [openRuns, setOpenRuns] = useState<ReadonlySet<string>>(() => new Set());
@@ -107,6 +115,7 @@ export function StackTrace({ exception }: StackTraceProps) {
               exception={current}
               isCause={exceptionIndex > 0}
               rows={frameRows(current.frames, view)}
+              linkFor={linkFor}
               isExpanded={(frameIndex) => expanded.has(frameKey(exceptionIndex, frameIndex))}
               onToggleFrame={(frameIndex) => setExpanded((keys) => toggled(keys, frameKey(exceptionIndex, frameIndex)))}
               isRunOpen={(start) => openRuns.has(frameKey(exceptionIndex, start))}
@@ -123,13 +132,14 @@ interface ExceptionFramesProps {
   exception: SymbolicatedException;
   isCause: boolean;
   rows: readonly FrameRow[];
+  linkFor: LinkFor;
   isExpanded: (frameIndex: number) => boolean;
   onToggleFrame: (frameIndex: number) => void;
   isRunOpen: (start: number) => boolean;
   onToggleRun: (start: number) => void;
 }
 
-function ExceptionFrames({ exception, isCause, rows, isExpanded, onToggleFrame, isRunOpen, onToggleRun }: ExceptionFramesProps) {
+function ExceptionFrames({ exception, isCause, rows, linkFor, isExpanded, onToggleFrame, isRunOpen, onToggleRun }: ExceptionFramesProps) {
   return (
     <section>
       {isCause && <p className="text-muted-foreground mb-0.5 text-xs">Caused by</p>}
@@ -152,6 +162,7 @@ function ExceptionFrames({ exception, isCause, rows, isExpanded, onToggleFrame, 
                 frame={row.frame}
                 expanded={isExpanded(row.index)}
                 onToggle={() => onToggleFrame(row.index)}
+                repositoryUrl={linkFor(row.frame)}
               />
             ) : (
               <VendorRun
@@ -159,6 +170,7 @@ function ExceptionFrames({ exception, isCause, rows, isExpanded, onToggleFrame, 
                 row={row}
                 open={isRunOpen(row.start)}
                 onToggle={() => onToggleRun(row.start)}
+                linkFor={linkFor}
                 isExpanded={isExpanded}
                 onToggleFrame={onToggleFrame}
               />
@@ -174,12 +186,13 @@ interface VendorRunProps {
   row: Extract<FrameRow, { kind: "vendor-run" }>;
   open: boolean;
   onToggle: () => void;
+  linkFor: LinkFor;
   isExpanded: (frameIndex: number) => boolean;
   onToggleFrame: (frameIndex: number) => void;
 }
 
 /** A folded run of library frames, opened in place rather than by switching the whole trace to Full. */
-function VendorRun({ row, open, onToggle, isExpanded, onToggleFrame }: VendorRunProps) {
+function VendorRun({ row, open, onToggle, linkFor, isExpanded, onToggleFrame }: VendorRunProps) {
   const count = row.frames.length;
 
   return (
@@ -202,6 +215,7 @@ function VendorRun({ row, open, onToggle, isExpanded, onToggleFrame }: VendorRun
             frame={frame}
             expanded={isExpanded(row.start + offset)}
             onToggle={() => onToggleFrame(row.start + offset)}
+            repositoryUrl={linkFor(frame)}
           />
         ))}
     </>

@@ -367,6 +367,10 @@ func (projectsForArtifactRoute) Update(context.Context, string, project.UpdatePr
 	return project.Project{}, errors.New("unexpected update")
 }
 
+func (projectsForArtifactRoute) UpdateSourceLinks(context.Context, string, project.SourceLinks) (project.Project, error) {
+	return project.Project{}, errors.New("unexpected source links update")
+}
+
 type artifactRouteKeys struct{}
 
 func (artifactRouteKeys) Create(context.Context, project.CreateKey) (project.Key, error) {

@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/apiClient";
 import { issueViews } from "@/features/issues/issueViews";
 import type { TimeRangeValue } from "@/features/issues/TimeRangePicker";
+import { useProjects } from "@/features/projects/ProjectsProvider";
 import { ALL_TIME_WINDOW } from "@/lib/issueFilters";
 
 import { EventFilterBar } from "./EventFilterBar";
@@ -76,6 +77,10 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
     setEventWindow(resolveTimeRange(next, new Date()));
   }, []);
 
+  const { state: projects } = useProjects();
+  const sourceLinks =
+    projects.status === "ready" ? (projects.projects.find((candidate) => candidate.slug === slug) ?? null) : null;
+
   const loadIssue = useCallback(() => api.getIssue(issueId), [issueId]);
   const issue = useAsyncResource(loadIssue);
   const loadedIssue =
@@ -140,7 +145,7 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
             environment={environment}
             timeRange={eventWindow}
           />
-          <EventPanels selectedEvent={selectedEvent} />
+          <EventPanels selectedEvent={selectedEvent} sourceLinks={sourceLinks} />
         </div>
 
         <div className="min-w-0 space-y-4">

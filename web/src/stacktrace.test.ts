@@ -8,12 +8,14 @@ const mappedFrame: SymbolicatedFrame = {
   generated: { function: "a", filename: "https://cdn.test/app.js", line: 1, column: 481, in_app: true },
   original: { function: "checkout", filename: "src/checkout.ts", line: 42, column: 9, in_app: true },
   context: [],
+  vars: null,
 };
 
 const unmappedFrame: SymbolicatedFrame = {
   generated: { function: "b", filename: "https://cdn.test/app.js", line: 1, column: 481, in_app: false },
   original: null,
   context: [],
+  vars: null,
 };
 
 test("prefers original source locations and preserves generated fallback", () => {
@@ -28,6 +30,7 @@ test("omits a zero column from the location", () => {
     generated: { function: "c", filename: "SourceFile", line: 12, column: 0, in_app: true },
     original: { function: "com.acme.shop.Cart.load", filename: "Cart.java", line: 102, column: 0, in_app: true },
     context: [],
+    vars: null,
   };
   assert.equal(displayLocation(jvmFrame), "Cart.java:102");
   assert.equal(displayPosition(jvmFrame.generated), "SourceFile:12");
@@ -50,6 +53,7 @@ test("labels a frame whose function name is missing", () => {
     generated: { function: "", filename: "", line: 0, column: 0, in_app: true },
     original: null,
     context: [],
+    vars: null,
   };
 
   assert.equal(displayFunction(unnamedFrame), "<unknown>");

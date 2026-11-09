@@ -1,17 +1,19 @@
-import { ChevronRight } from "lucide-react";
+import { ChevronRight, ExternalLink } from "lucide-react";
 
 import type { SymbolicatedFrame } from "@/api";
 import { displayFunction, displayLocation, displayPosition } from "@/stacktrace";
 import { cn } from "@/lib/utils";
 
-import { hasSourceLocation, isInAppFrame } from "./frames";
+import { FrameVariables } from "./FrameVariables";
+import { hasFrameDetail, hasSourceLocation, isInAppFrame } from "./frames";
 import { isHighlightable, tokenizeSourceLines, type SourceTokenKind } from "./sourceSyntax";
 
 interface FrameProps {
   frame: SymbolicatedFrame;
-  /** Whether the source context shows. Ignored for a frame that carries none. */
+  /** Whether the source context and variables show. Ignored for a frame that carries neither. */
   expanded: boolean;
   onToggle: () => void;
+  repositoryUrl: string | null;
 }
 
 /**
@@ -21,12 +23,13 @@ interface FrameProps {
  * label — colour alone would leave the distinction invisible to a colour-blind
  * reader, and that distinction is the whole point of the panel.
  */
-export function Frame({ frame, expanded, onToggle }: FrameProps) {
+export function Frame({ frame, expanded, onToggle, repositoryUrl }: FrameProps) {
   const inApp = isInAppFrame(frame);
   const hasContext = frame.context.length > 0;
+  const hasDetail = hasFrameDetail(frame);
   const summary = (
     <>
-      {hasContext ? (
+      {hasDetail ? (
         <ChevronRight
           className={cn("text-muted-foreground size-3 shrink-0 self-center transition-transform", expanded && "rotate-90")}
           aria-hidden="true"
@@ -56,13 +59,26 @@ export function Frame({ frame, expanded, onToggle }: FrameProps) {
 
   return (
     <li className={cn("border-t first:border-t-0", inApp ? "bg-card" : "bg-muted/20")}>
-      {hasContext ? (
-        <button type="button" aria-expanded={expanded} onClick={onToggle} className={cn(summaryClass, "hover:bg-muted/40")}>
-          {summary}
-        </button>
-      ) : (
-        <div className={summaryClass}>{summary}</div>
-      )}
+      <div className="flex items-start">
+        {hasDetail ? (
+          <button type="button" aria-expanded={expanded} onClick={onToggle} className={cn(summaryClass, "hover:bg-muted/40")}>
+            {summary}
+          </button>
+        ) : (
+          <div className={summaryClass}>{summary}</div>
+        )}
+        {repositoryUrl !== null && (
+          <a
+            href={repositoryUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-muted-foreground hover:text-foreground flex shrink-0 items-center gap-1 px-3 py-2 text-xs whitespace-nowrap"
+          >
+            <ExternalLink className="size-3" aria-hidden="true" />
+            Open in repository
+          </a>
+        )}
+      </div>
 
       {expanded && frame.original !== null && (
         <p className="text-muted-foreground px-3 pb-2 pl-8 font-mono text-[11px] break-all">
@@ -71,6 +87,8 @@ export function Frame({ frame, expanded, onToggle }: FrameProps) {
       )}
 
       {expanded && hasContext && <SourceContext frame={frame} />}
+
+      {expanded && frame.vars !== null && <FrameVariables vars={frame.vars} />}
     </li>
   );
 }

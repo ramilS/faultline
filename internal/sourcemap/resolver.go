@@ -30,11 +30,12 @@ func NewResolver(repo Repository, cache *ParsedMapCache) Resolver {
 }
 
 type payloadFrame struct {
-	Filename string `json:"filename"`
-	Function string `json:"function"`
-	Lineno   *int   `json:"lineno"`
-	Colno    *int   `json:"colno"`
-	InApp    bool   `json:"in_app"`
+	Filename string          `json:"filename"`
+	Function string          `json:"function"`
+	Lineno   *int            `json:"lineno"`
+	Colno    *int            `json:"colno"`
+	InApp    bool            `json:"in_app"`
+	Vars     json.RawMessage `json:"vars"`
 }
 
 type payloadStacktrace struct {
@@ -207,11 +208,14 @@ func (r *resolver) resolveException(ctx context.Context, in EventInput, source *
 }
 
 func (r *resolver) resolveFrame(ctx context.Context, in EventInput, source payloadFrame, state *resolution) (Frame, *contextCandidate) {
-	frame := Frame{Generated: Position{
-		Function: source.Function,
-		Filename: source.Filename,
-		InApp:    source.InApp,
-	}}
+	frame := Frame{
+		Generated: Position{
+			Function: source.Function,
+			Filename: source.Filename,
+			InApp:    source.InApp,
+		},
+		Vars: FrameVars(source.Vars),
+	}
 	if source.Lineno != nil {
 		frame.Generated.Line = *source.Lineno
 	}

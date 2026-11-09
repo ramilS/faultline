@@ -22,6 +22,7 @@ type ProjectService interface {
 	CreateProject(context.Context, project.CreateProject) (project.Project, error)
 	FindProject(context.Context, access.Scope, string) (project.Project, error)
 	UpdateProject(context.Context, string, project.UpdateProject) (project.Project, error)
+	UpdateSourceLinks(context.Context, string, project.SourceLinks) (project.Project, error)
 	ListKeys(context.Context, access.Scope, string) ([]project.Key, error)
 	CreateKey(context.Context, int64, project.CreateKey) (project.Key, string, error)
 	RevokeKey(context.Context, access.Scope, string, int64) error
@@ -55,14 +56,23 @@ type updateProjectRequest struct {
 	Platform  string  `json:"platform"`
 }
 
+type sourceLinksRequest struct {
+	Template   *string `json:"source_link_template"`
+	StackRoot  *string `json:"source_stack_root"`
+	SourceRoot *string `json:"source_root"`
+}
+
 type projectResponse struct {
-	IconEmoji string `json:"icon_emoji"`
-	IconImage string `json:"icon_image"`
-	ID        int64  `json:"id"`
-	Slug      string `json:"slug"`
-	Name      string `json:"name"`
-	Platform  string `json:"platform"`
-	CreatedAt string `json:"created_at"`
+	IconEmoji          string `json:"icon_emoji"`
+	IconImage          string `json:"icon_image"`
+	ID                 int64  `json:"id"`
+	Slug               string `json:"slug"`
+	Name               string `json:"name"`
+	Platform           string `json:"platform"`
+	SourceLinkTemplate string `json:"source_link_template"`
+	SourceStackRoot    string `json:"source_stack_root"`
+	SourceRoot         string `json:"source_root"`
+	CreatedAt          string `json:"created_at"`
 }
 
 type projectsResponse struct {
@@ -183,6 +193,38 @@ func (h *ProjectHandler) UpdateProject(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, projectEnvelope{Project: toProjectResponse(updated)})
 }
 
+func (h *ProjectHandler) UpdateSourceLinks(w http.ResponseWriter, r *http.Request) {
+	if !declaredJSONBody(r) {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	var input sourceLinksRequest
+	if err := decodeSingleJSON(w, r, projectBodyLimit, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if input.Template == nil || input.StackRoot == nil || input.SourceRoot == nil {
+		writeError(w, http.StatusBadRequest, "source_link_template, source_stack_root and source_root are all required")
+		return
+	}
+	links := project.SourceLinks{Template: *input.Template, StackRoot: *input.StackRoot, SourceRoot: *input.SourceRoot}
+	updated, err := h.service.UpdateSourceLinks(r.Context(), r.PathValue("slug"), links)
+	if invalid, ok := errors.AsType[*project.SourceLinksError](err); ok {
+		writeError(w, http.StatusBadRequest, invalid.Error())
+		return
+	}
+	if errors.Is(err, project.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "project not found")
+		return
+	}
+	if err != nil {
+		h.reportError(fmt.Errorf("update source links: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, projectEnvelope{Project: toProjectResponse(updated)})
+}
+
 func (h *ProjectHandler) ListKeys(w http.ResponseWriter, r *http.Request) {
 	slug := r.PathValue("slug")
 	scope, ok := scopeOrRefuse(w, r)
@@ -294,11 +336,14 @@ func (h *ProjectHandler) resolveProject(w http.ResponseWriter, r *http.Request, 
 func toProjectResponse(source project.Project) projectResponse {
 	return projectResponse{
 		IconEmoji: source.IconEmoji, IconImage: source.IconImage,
-		ID:        source.ID,
-		Slug:      source.Slug,
-		Name:      source.Name,
-		Platform:  source.Platform,
-		CreatedAt: source.CreatedAt.Format(time.RFC3339),
+		ID:                 source.ID,
+		Slug:               source.Slug,
+		Name:               source.Name,
+		Platform:           source.Platform,
+		SourceLinkTemplate: source.SourceLinks.Template,
+		SourceStackRoot:    source.SourceLinks.StackRoot,
+		SourceRoot:         source.SourceLinks.SourceRoot,
+		CreatedAt:          source.CreatedAt.Format(time.RFC3339),
 	}
 }
 

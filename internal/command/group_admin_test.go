@@ -504,6 +504,10 @@ func (r *fakeProjectRepository) Update(context.Context, string, project.UpdatePr
 	return project.Project{}, errors.New("unexpected Update call")
 }
 
+func (r *fakeProjectRepository) UpdateSourceLinks(context.Context, string, project.SourceLinks) (project.Project, error) {
+	return project.Project{}, errors.New("unexpected UpdateSourceLinks call")
+}
+
 func (r *fakeProjectRepository) FindBySlug(_ context.Context, _ access.Scope, slug string) (project.Project, error) {
 	if r.findErr != nil {
 		return project.Project{}, r.findErr

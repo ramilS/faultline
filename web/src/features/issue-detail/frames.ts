@@ -1,4 +1,4 @@
-import type { SymbolicatedException, SymbolicatedFrame } from "../../api.ts";
+import type { SourceLinkSetting, SymbolicatedException, SymbolicatedFrame } from "../../api.ts";
 import { displayFunction, displayLocation } from "../../stacktrace.ts";
 
 /** Which frames a stack trace shows. Vendor frames are noise far more often than signal. */
@@ -20,6 +20,10 @@ export function isInAppFrame(frame: SymbolicatedFrame): boolean {
  */
 export function hasSourceLocation(frame: SymbolicatedFrame): boolean {
   return (frame.original ?? frame.generated).filename !== "";
+}
+
+export function hasFrameDetail(frame: SymbolicatedFrame): boolean {
+  return frame.context.length > 0 || frame.vars !== null;
 }
 
 /** One row of a rendered trace: a frame, or a folded run of consecutive vendor frames. */
@@ -64,8 +68,8 @@ export function frameRows(frames: readonly SymbolicatedFrame[], filter: FrameFil
 }
 
 /**
- * The frame a trace opens with its source showing, or null when no frame
- * carries any source.
+ * The frame a trace opens with its source or variables showing, or null when
+ * no frame carries either.
  *
  * Frames arrive innermost first, so the first in-app frame is where the
  * application's own code was when it broke — the line a reader came for.
@@ -74,13 +78,52 @@ export function frameRows(frames: readonly SymbolicatedFrame[], filter: FrameFil
  * that has any, so a vendor-only trace still opens on something.
  */
 export function defaultExpandedFrame(frames: readonly SymbolicatedFrame[]): number | null {
-  const hasContext = (frame: SymbolicatedFrame) => frame.context.length > 0;
-  const inApp = frames.findIndex((frame) => isInAppFrame(frame) && hasContext(frame));
+  const inApp = frames.findIndex((frame) => isInAppFrame(frame) && hasFrameDetail(frame));
   if (inApp !== -1) {
     return inApp;
   }
-  const any = frames.findIndex(hasContext);
+  const any = frames.findIndex(hasFrameDetail);
   return any === -1 ? null : any;
+}
+
+function encodePath(path: string): string {
+  return path.split("/").map(encodeURIComponent).join("/");
+}
+
+function repositoryPath(filename: string, setting: SourceLinkSetting): string {
+  const stackRoot = setting.source_stack_root.replace(/\/+$/, "");
+  const underStackRoot = stackRoot !== "" && (filename === stackRoot || filename.startsWith(`${stackRoot}/`));
+  const relative = underStackRoot ? filename.slice(stackRoot.length) : filename;
+  const sourceRoot = setting.source_root.replace(/\/+$/, "");
+  const trimmed = relative.replace(/^\/+/, "");
+  return sourceRoot === "" ? trimmed : `${sourceRoot}/${trimmed}`;
+}
+
+/**
+ * The path comes from the original position when symbolication found one,
+ * since that is the file the repository holds. The result is checked to be an
+ * http(s) URL again even though the server validates the template: it lands in
+ * an `href`, and a row edited by hand skips that validation.
+ */
+export function sourceLink(frame: SymbolicatedFrame, release: string | null, setting: SourceLinkSetting): string | null {
+  const template = setting.source_link_template;
+  const position = frame.original ?? frame.generated;
+  if (template === "" || !isInAppFrame(frame) || position.filename === "" || position.line <= 0) {
+    return null;
+  }
+  if (template.includes("{release}") && (release === null || release === "")) {
+    return null;
+  }
+  const link = template
+    .replaceAll("{path}", encodePath(repositoryPath(position.filename, setting)))
+    .replaceAll("{line}", String(position.line))
+    .replaceAll("{release}", encodeURIComponent(release ?? ""));
+  try {
+    const protocol = new URL(link).protocol;
+    return protocol === "https:" || protocol === "http:" ? link : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

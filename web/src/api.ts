@@ -5,8 +5,13 @@ export interface Project {
   slug: string;
   name: string;
   platform: string;
+  source_link_template: string;
+  source_stack_root: string;
+  source_root: string;
   created_at: string;
 }
+
+export type SourceLinkSetting = Pick<Project, "source_link_template" | "source_stack_root" | "source_root">;
 
 export interface Key {
   id: number;
@@ -266,6 +271,7 @@ export interface SymbolicatedFrame {
   generated: SymbolicatedPosition;
   original: SymbolicatedPosition | null;
   context: SourceContextLine[];
+  vars: Record<string, unknown> | null;
 }
 
 export interface SymbolicatedException {
@@ -530,6 +536,7 @@ export interface FaultlineApi {
   listProjects(): Promise<Project[]>;
   createProject(input: CreateProjectInput): Promise<Project>;
   updateProject(slug: string, input: UpdateProjectInput): Promise<Project>;
+  updateSourceLinks(slug: string, setting: SourceLinkSetting): Promise<Project>;
   listKeys(slug: string): Promise<Key[]>;
   createKey(slug: string, input: CreateKeyInput): Promise<CreatedKey>;
   revokeKey(slug: string, keyId: number): Promise<void>;
@@ -614,6 +621,14 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
         method: "PATCH",
         json: input
       });
+      return body.project;
+    },
+    updateSourceLinks: async (slug, setting) => {
+      const body = await request<{ project: Project }>(
+        fetchImpl,
+        `/api/v1/projects/${encodeURIComponent(slug)}/source-links`,
+        { method: "PUT", json: setting }
+      );
       return body.project;
     },
     listKeys: async (slug) => {

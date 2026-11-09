@@ -547,3 +547,30 @@ func TestResolverReportsAFailedUseRecordAndRetriesIt(t *testing.T) {
 		t.Fatalf("marked %v err=%v, want the failed record retried", repo.marked, err)
 	}
 }
+
+func frameWithVars(module, function string, line int, vars string) string {
+	return fmt.Sprintf(`{"module":%q,"function":%q,"filename":"SourceFile","lineno":%d,"in_app":true,"vars":%s}`, module, function, line, vars)
+}
+
+func TestResolverCarriesFrameVariablesOnlyWhereOneFrameStaysOne(t *testing.T) {
+	repo := &fakeRepository{mappings: map[string]Stored{mappingUUID: storedMapping(t, shopMapping)}}
+	payload := androidEvent(proguardImages(mappingUUID), exceptionValue("E", "m",
+		frameWithVars("x.y", "z", 3, `{"unknown":1}`),
+		frameWithVars("a.a", "c", 12, `{"retraced":2}`),
+		frameWithVars("a.b", "a", 5, `{"inlined":3}`),
+	))
+
+	exception, err := resolve(t, repo, &recordingFallback{}, payload)
+
+	if err != nil {
+		t.Fatalf("Resolve: %v", err)
+	}
+	if len(exception.Frames) != 4 {
+		t.Fatalf("frames = %d, want two inlined, one retraced, one unknown", len(exception.Frames))
+	}
+	for index, want := range []string{"", "", `{"retraced":2}`, `{"unknown":1}`} {
+		if got := string(exception.Frames[index].Vars); got != want {
+			t.Fatalf("frame %d vars = %q, want %q", index, got, want)
+		}
+	}
+}

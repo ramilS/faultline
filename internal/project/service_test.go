@@ -18,6 +18,7 @@ type fakeProjects struct {
 	created     []CreateProject
 	updated     []UpdateProject
 	updatedSlug string
+	sourceLinks []SourceLinks
 	project     Project
 	createErr   error
 	listErr     error
@@ -55,6 +56,15 @@ func (r *fakeProjects) Update(_ context.Context, slug string, input UpdateProjec
 		return Project{}, r.updateErr
 	}
 	return Project{ID: 1, Slug: slug, Name: input.Name, Platform: input.Platform}, nil
+}
+
+func (r *fakeProjects) UpdateSourceLinks(_ context.Context, slug string, links SourceLinks) (Project, error) {
+	r.sourceLinks = append(r.sourceLinks, links)
+	r.updatedSlug = slug
+	if r.updateErr != nil {
+		return Project{}, r.updateErr
+	}
+	return Project{ID: 1, Slug: slug, SourceLinks: links}, nil
 }
 
 type fakeKeys struct {

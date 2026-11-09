@@ -411,3 +411,17 @@ func TestProjectMutationsRequireOrigin(t *testing.T) {
 		}
 	}
 }
+
+func TestSourceLinksUpdateRouteRejectsASignedInMember(t *testing.T) {
+	recorder := httptest.NewRecorder()
+	request := httptest.NewRequest(http.MethodPut, "https://example.com/api/v1/projects/web/source-links", strings.NewReader(`{"source_link_template":"","source_stack_root":"","source_root":""}`))
+	request.Header.Set("Content-Type", "application/json")
+	request.Header.Set("Cookie", api.SessionCookieName+"=token")
+	request.Header.Set("Origin", "https://example.com")
+
+	New(authDependencies(&authServiceStub{authUser: auth.User{ID: 2, Role: auth.RoleMember}})).ServeHTTP(recorder, request)
+
+	if recorder.Code != http.StatusForbidden {
+		t.Fatalf("status = %d, want 403: %s", recorder.Code, recorder.Body.String())
+	}
+}

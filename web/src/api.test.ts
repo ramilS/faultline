@@ -83,6 +83,33 @@ test("updateProject patches only name and platform at the escaped slug", async (
   assert.equal(updated.platform, "go");
 });
 
+test("updateSourceLinks puts all three source-link fields at the escaped slug", async () => {
+  const { fetch, calls } = recordingFetch(
+    jsonResponse(200, {
+      project: {
+        id: 2, slug: "api", name: "API", platform: "python", created_at: "2026-07-13T08:00:00Z",
+        source_link_template: "https://github.com/acme/api/blob/main/{path}#L{line}", source_stack_root: "/app/", source_root: "src/"
+      }
+    }),
+  );
+  const api = createApi(fetch);
+
+  const updated = await api.updateSourceLinks("a/b", {
+    source_link_template: "https://github.com/acme/api/blob/main/{path}#L{line}",
+    source_stack_root: "/app/",
+    source_root: "src/"
+  });
+
+  assert.equal(calls[0].url, "/api/v1/projects/a%2Fb/source-links");
+  assert.equal(calls[0].init.method, "PUT");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), {
+    source_link_template: "https://github.com/acme/api/blob/main/{path}#L{line}",
+    source_stack_root: "/app/",
+    source_root: "src/"
+  });
+  assert.equal(updated.source_stack_root, "/app/");
+});
+
 test("createKey returns raw key material only at the top level", async () => {
   const { fetch, calls } = recordingFetch(
     jsonResponse(201, {

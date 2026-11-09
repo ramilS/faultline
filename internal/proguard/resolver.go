@@ -44,11 +44,12 @@ func NewResolver(repo Repository, fallback sourcemap.Resolver) sourcemap.Resolve
 }
 
 type payloadFrame struct {
-	Module   string `json:"module"`
-	Function string `json:"function"`
-	Filename string `json:"filename"`
-	Lineno   *int   `json:"lineno"`
-	InApp    bool   `json:"in_app"`
+	Module   string          `json:"module"`
+	Function string          `json:"function"`
+	Filename string          `json:"filename"`
+	Lineno   *int            `json:"lineno"`
+	InApp    bool            `json:"in_app"`
+	Vars     json.RawMessage `json:"vars"`
 }
 
 type payloadException struct {
@@ -244,12 +245,16 @@ func retraceFrames(frames []payloadFrame, mappings []*Mapping) ([]sourcemap.Fram
 		if source.Lineno != nil {
 			generated.Line = *source.Lineno
 		}
+		vars := sourcemap.FrameVars(source.Vars)
 		originals, found := retrace(mappings, Frame{Class: source.Module, Method: source.Function, Line: generated.Line})
 		if !found {
-			retraced = append(retraced, sourcemap.Frame{Generated: generated})
+			retraced = append(retraced, sourcemap.Frame{Generated: generated, Vars: vars})
 			continue
 		}
 		retracedAny = true
+		if len(originals) > 1 {
+			vars = nil
+		}
 		for _, original := range originals {
 			retraced = append(retraced, sourcemap.Frame{
 				Generated: generated,
@@ -259,6 +264,7 @@ func retraceFrames(frames []payloadFrame, mappings []*Mapping) ([]sourcemap.Fram
 					Line:     original.Line,
 					InApp:    source.InApp,
 				},
+				Vars: vars,
 			})
 		}
 	}

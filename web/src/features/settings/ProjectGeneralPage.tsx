@@ -18,6 +18,8 @@ import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useSaveForm } from "@/hooks/useSaveForm";
 
+import { SourceLinksForm } from "./SourceLinksForm";
+
 export function ProjectGeneralPage() {
   const { slug } = useParams<{ slug: string }>();
   return slug === undefined ? <Navigate to="/projects" replace /> : <ProjectGeneralScreen slug={slug} />;
@@ -38,12 +40,21 @@ function ProjectGeneralScreen({ slug }: { slug: string }) {
     <>
       <PageHeader
         title="General"
-        description={isOwner ? "The project's name and platform." : "The project's name and platform. Changed by an owner."}
+        description={
+          isOwner
+            ? "The project's name, platform and source code links."
+            : "The project's name, platform and source code links. Changed by an owner."
+        }
       />
       <div className="p-4 sm:p-6">
         {state.status === "loading" && <Skeleton className="h-48 w-full max-w-2xl" />}
         {state.status === "failed" && <ErrorState message={state.message} onRetry={() => void reload()} />}
-        {project !== undefined && <ProjectForm key={project.id} project={project} editable={isOwner} onSaved={reload} />}
+        {project !== undefined && (
+          <div className="space-y-8">
+            <ProjectForm key={project.id} project={project} editable={isOwner} onSaved={reload} />
+            <SourceLinksForm key={`links-${project.id}`} project={project} editable={isOwner} onSaved={reload} />
+          </div>
+        )}
       </div>
     </>
   );

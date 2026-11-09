@@ -10,7 +10,8 @@ function frameIn(filename: string, contextLines: string[]): SymbolicatedFrame {
   return {
     generated: position,
     original: null,
-    context: contextLines.map((text, index) => ({ line: 9 + index, text, focus: index === 1 }))
+    context: contextLines.map((text, index) => ({ line: 9 + index, text, focus: index === 1 })),
+    vars: null
   } as unknown as SymbolicatedFrame;
 }
 
@@ -20,7 +21,7 @@ describe("Frame collapsing", () => {
     const frame = frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"]);
     const { container, rerender } = render(
       <ul>
-        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+        <Frame repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
       </ul>
     );
 
@@ -31,7 +32,7 @@ describe("Frame collapsing", () => {
 
     rerender(
       <ul>
-        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+        <Frame repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
       </ul>
     );
     expect(container.querySelector("pre")?.textContent).toContain("await run(a)");
@@ -40,7 +41,7 @@ describe("Frame collapsing", () => {
   it("offers nothing to open on a frame that carries no source", () => {
     render(
       <ul>
-        <Frame frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} />
+        <Frame repositoryUrl={null} frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} />
       </ul>
     );
 
@@ -50,7 +51,7 @@ describe("Frame collapsing", () => {
 
 describe("Frame source context", () => {
   it("sets keywords, strings and comments apart by weight and tone in a JavaScript file", () => {
-    render(<ul><Frame expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
+    render(<ul><Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
 
     expect(screen.getByText("return").className).toContain("font-semibold");
     expect(screen.getByText("// finished").className).toContain("italic");
@@ -59,7 +60,7 @@ describe("Frame source context", () => {
   it("shows every line's text exactly as sent, whatever the highlighting", () => {
     const { container } = render(
       <ul>
-        <Frame expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
+        <Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
       </ul>
     );
 
@@ -68,7 +69,7 @@ describe("Frame source context", () => {
   });
 
   it("leaves a Java frame plain rather than colouring it by JavaScript's rules", () => {
-    render(<ul><Frame expanded onToggle={() => {}} frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
+    render(<ul><Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
 
     expect(screen.getByText("return value; // finished").className).not.toContain("italic");
   });
@@ -76,10 +77,129 @@ describe("Frame source context", () => {
   it("keeps markup in source as text", () => {
     const { container } = render(
       <ul>
-        <Frame expanded onToggle={() => {}} frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
+        <Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
       </ul>
     );
 
     expect(container.querySelector("img")).toBeNull();
+  });
+});
+
+function frameWithVars(vars: Record<string, unknown>): SymbolicatedFrame {
+  return {
+    generated: { filename: "/app/shop/cart.py", line: 88, column: 0, function: "load", in_app: true },
+    original: null,
+    context: [],
+    vars
+  };
+}
+
+function variableRow(name: string): HTMLElement {
+  const row = screen.getByText(name).closest("tr");
+  if (row === null) {
+    throw new Error(`no variable row for ${name}`);
+  }
+  return row;
+}
+
+describe("Frame local variables", () => {
+  it("opens a frame that carries variables but no source, and lists each variable by name", () => {
+    let expanded = false;
+    const frame = frameWithVars({ user_id: 42, password: "[Filtered]", items: [1, 2, 3] });
+    const { rerender } = render(
+      <ul>
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} repositoryUrl={null} />
+      </ul>
+    );
+    expect(screen.queryByText("user_id")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { expanded: false }));
+    rerender(
+      <ul>
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} repositoryUrl={null} />
+      </ul>
+    );
+
+    expect(screen.getByRole("table", { name: "Local variables" })).toBeDefined();
+    expect(variableRow("user_id").textContent).toContain("42");
+    expect(variableRow("password").textContent).toContain("[Filtered]");
+    expect(variableRow("items").textContent).toContain("[…] 3 items");
+  });
+
+  it("keeps a nested value collapsed until it is opened", () => {
+    render(
+      <ul>
+        <Frame frame={frameWithVars({ cart: { sku: "A-1", qty: 2 } })} expanded onToggle={() => {}} repositoryUrl={null} />
+      </ul>
+    );
+    expect(screen.queryByText("sku")).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /\{…\} 2 keys/ }));
+
+    expect(variableRow("sku").textContent).toContain("A-1");
+    expect(variableRow("qty").textContent).toContain("2");
+  });
+
+  it("cuts a huge value and says it was truncated", () => {
+    const { container } = render(
+      <ul>
+        <Frame frame={frameWithVars({ blob: "x".repeat(1 << 20) })} expanded onToggle={() => {}} repositoryUrl={null} />
+      </ul>
+    );
+
+    expect(screen.getByText(/truncated/).textContent).toContain("1047576 more characters");
+    expect((container.textContent ?? "").length).toBeLessThan(5000);
+  });
+
+  it("shows markup in a value as text", () => {
+    const { container } = render(
+      <ul>
+        <Frame frame={frameWithVars({ name: "<img src=x onerror=alert(1)>" })} expanded onToggle={() => {}} repositoryUrl={null} />
+      </ul>
+    );
+
+    expect(container.querySelector("img")).toBeNull();
+    expect(variableRow("name").textContent).toContain("<img src=x onerror=alert(1)>");
+  });
+
+  it("shows no variables section for a frame that sent none", () => {
+    render(
+      <ul>
+        <Frame expanded onToggle={() => {}} repositoryUrl={null} frame={frameIn("src/charge.ts", ["run()"])} />
+      </ul>
+    );
+
+    expect(screen.queryByRole("table", { name: "Local variables" })).toBeNull();
+  });
+});
+
+describe("Frame repository link", () => {
+  it("opens the repository in a new tab without handing it the dashboard", () => {
+    render(
+      <ul>
+        <Frame
+          frame={frameIn("src/shop/cart.py", [])}
+          expanded={false}
+          onToggle={() => {}}
+          repositoryUrl="https://github.com/acme/shop/blob/main/src/shop/cart.py#L88"
+        />
+      </ul>
+    );
+
+    const link = screen.getByRole("link", { name: "Open in repository" });
+    expect(link.getAttribute("href")).toBe("https://github.com/acme/shop/blob/main/src/shop/cart.py#L88");
+    expect(link.getAttribute("target")).toBe("_blank");
+    expect(link.getAttribute("rel")).toBe("noopener noreferrer");
+  });
+
+  it("renders no link or empty button when there is no repository URL", () => {
+    render(
+      <ul>
+        <Frame frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} repositoryUrl={null} />
+      </ul>
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
+    expect(screen.queryByRole("button")).toBeNull();
   });
 });

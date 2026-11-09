@@ -138,6 +138,45 @@ func TestProjectRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("stores source links apart from the name and platform", func(t *testing.T) {
+		created, err := projects.Create(ctx, project.CreateProject{Slug: "linked", Name: "Linked", Platform: project.PlatformPython})
+		if err != nil {
+			t.Fatalf("create project: %v", err)
+		}
+		if created.SourceLinks != (project.SourceLinks{}) {
+			t.Fatalf("a new project has source links: %+v", created.SourceLinks)
+		}
+		links := project.SourceLinks{Template: "https://github.com/acme/shop/blob/main/{path}#L{line}", StackRoot: "/app/", SourceRoot: "src/"}
+		updated, err := projects.UpdateSourceLinks(ctx, "linked", links)
+		if err != nil || updated.SourceLinks != links || updated.Name != "Linked" || updated.ID != created.ID {
+			t.Fatalf("UpdateSourceLinks = %+v, %v", updated, err)
+		}
+		renamed, err := projects.Update(ctx, "linked", project.UpdateProject{Name: "Renamed", Platform: project.PlatformPython})
+		if err != nil || renamed.SourceLinks != links {
+			t.Fatalf("a rename must keep the source links: %+v, %v", renamed, err)
+		}
+		listed, err := projects.List(ctx, access.Unrestricted())
+		if err != nil {
+			t.Fatalf("list projects: %v", err)
+		}
+		var listedLinks project.SourceLinks
+		for _, current := range listed {
+			if current.Slug == "linked" {
+				listedLinks = current.SourceLinks
+			}
+		}
+		if listedLinks != links {
+			t.Fatalf("listed source links = %+v", listedLinks)
+		}
+		cleared, err := projects.UpdateSourceLinks(ctx, "linked", project.SourceLinks{})
+		if err != nil || cleared.SourceLinks != (project.SourceLinks{}) {
+			t.Fatalf("clear = %+v, %v", cleared, err)
+		}
+		if _, err := projects.UpdateSourceLinks(ctx, "does-not-exist", links); !errors.Is(err, project.ErrNotFound) {
+			t.Fatalf("missing slug error = %v, want ErrNotFound", err)
+		}
+	})
+
 	t.Run("finds project by slug and reports missing slug", func(t *testing.T) {
 		created, err := projects.Create(ctx, project.CreateProject{Slug: "mobile", Name: "Mobile", Platform: project.PlatformOther})
 		if err != nil {

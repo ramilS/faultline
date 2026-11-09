@@ -88,11 +88,15 @@ type ContextLine struct {
 }
 
 // Frame pairs the reported generated location with its resolved original
-// location. Original is nil when no source map resolves the frame.
+// location. Original is nil when no source map resolves the frame. Vars holds
+// the frame's local variables as the stored, already scrubbed payload carries
+// them; it is nil when the SDK sent none or the frame was expanded from one
+// payload frame into several.
 type Frame struct {
 	Generated Position
 	Original  *Position
 	Context   []ContextLine
+	Vars      json.RawMessage
 }
 
 // Exception mirrors the browser exception payload with resolved frames,

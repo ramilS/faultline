@@ -9,7 +9,8 @@ function frame(fn: string, inApp: boolean, source: string | null = null): Symbol
   return {
     generated: { function: fn, filename: `src/${fn}.ts`, line: 3, column: 1, in_app: inApp },
     original: null,
-    context: source === null ? [] : [{ line: 3, text: source, focus: true }]
+    context: source === null ? [] : [{ line: 3, text: source, focus: true }],
+    vars: null
   };
 }
 
@@ -32,13 +33,13 @@ function sourceShown(): string[] {
 
 describe("StackTrace", () => {
   it("opens with only the innermost in-app frame's source showing", () => {
-    render(<StackTrace exception={TRACE} />);
+    render(<StackTrace exception={TRACE} release={null} sourceLinks={null} />);
 
     expect(sourceShown()).toEqual(["3total += sku.price"]);
   });
 
   it("folds vendor frames into a row that opens them in place", () => {
-    render(<StackTrace exception={TRACE} />);
+    render(<StackTrace exception={TRACE} release={null} sourceLinks={null} />);
 
     expect(screen.queryByText("scheduler")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "Show 2 vendor frames" }));
@@ -48,7 +49,7 @@ describe("StackTrace", () => {
   });
 
   it("lists every frame unfolded in the full view", () => {
-    render(<StackTrace exception={TRACE} />);
+    render(<StackTrace exception={TRACE} release={null} sourceLinks={null} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Full" }));
 
@@ -58,7 +59,7 @@ describe("StackTrace", () => {
   });
 
   it("shows the whole trace as plain text in the raw view", () => {
-    const { container } = render(<StackTrace exception={TRACE} />);
+    const { container } = render(<StackTrace exception={TRACE} release={null} sourceLinks={null} />);
 
     fireEvent.click(screen.getByRole("button", { name: "Raw" }));
 
@@ -78,7 +79,8 @@ describe("StackTrace", () => {
     const unnamedFrame: SymbolicatedFrame = {
       generated: { function: "", filename: "", line: 0, column: 0, in_app: true },
       original: null,
-      context: []
+      context: [],
+      vars: null
     };
     const exception: SymbolicatedException = {
       type: "kotlin.IllegalArgumentException",
@@ -86,7 +88,7 @@ describe("StackTrace", () => {
       cause: null,
       frames: [unnamedFrame, unnamedFrame]
     };
-    const { container } = render(<StackTrace exception={exception} />);
+    const { container } = render(<StackTrace exception={exception} release={null} sourceLinks={null} />);
 
     expect([...container.querySelectorAll("ul > li")].map((row) => row.textContent)).toEqual([
       "<unknown>",
@@ -97,5 +99,32 @@ describe("StackTrace", () => {
     expect(container.querySelector("pre")?.textContent).toBe(
       "kotlin.IllegalArgumentException: Key was already used\n  at <unknown>\n  at <unknown>"
     );
+  });
+
+  it("links in-app frames to the repository at the event's release and leaves vendor frames unlinked", () => {
+    render(
+      <StackTrace
+        exception={TRACE}
+        release="shop@1.2"
+        sourceLinks={{ source_link_template: "https://git.example/shop/-/blob/{release}/{path}#L{line}", source_stack_root: "", source_root: "" }}
+      />
+    );
+
+    expect(screen.getAllByRole("link", { name: "Open in repository" }).map((link) => link.getAttribute("href"))).toEqual([
+      "https://git.example/shop/-/blob/shop%401.2/src/calcTotal.ts#L3",
+      "https://git.example/shop/-/blob/shop%401.2/src/onSubmit.ts#L3"
+    ]);
+  });
+
+  it("shows no repository link for an event without a release when the template needs one", () => {
+    render(
+      <StackTrace
+        exception={TRACE}
+        release={null}
+        sourceLinks={{ source_link_template: "https://git.example/shop/-/blob/{release}/{path}", source_stack_root: "", source_root: "" }}
+      />
+    );
+
+    expect(screen.queryByRole("link")).toBeNull();
   });
 });

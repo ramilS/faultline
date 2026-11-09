@@ -42,36 +42,51 @@ func NewProjectRepository(pool *pgxpool.Pool) *ProjectRepository {
 	}
 }
 
+const projectColumns = `id, slug, name, platform, created_at, icon_emoji, icon_image, source_link_template, source_stack_root, source_root`
+
+func scanProject(row pgx.Row) (project.Project, error) {
+	var scanned project.Project
+	var storedImage []byte
+	err := row.Scan(
+		&scanned.ID,
+		&scanned.Slug,
+		&scanned.Name,
+		&scanned.Platform,
+		&scanned.CreatedAt,
+		&scanned.IconEmoji,
+		&storedImage,
+		&scanned.SourceLinks.Template,
+		&scanned.SourceLinks.StackRoot,
+		&scanned.SourceLinks.SourceRoot,
+	)
+	if err != nil {
+		return project.Project{}, err
+	}
+	scanned.IconImage = project.IconDataURL(storedImage)
+	scanned.CreatedAt = scanned.CreatedAt.UTC()
+	return scanned, nil
+}
+
 func (repository *projectRepository) Create(ctx context.Context, input project.CreateProject) (project.Project, error) {
 	imageBytes, err := project.IconBytes(input.IconImage)
 	if err != nil {
 		return project.Project{}, err
 	}
-	var created project.Project
-	var storedImage []byte
-	err = repository.pool.QueryRow(ctx, `
+	created, err := scanProject(repository.pool.QueryRow(ctx, `
 		INSERT INTO projects (slug, name, platform, icon_emoji, icon_image)
 		VALUES ($1, $2, $3, $4, NULLIF($5::bytea, ''::bytea))
-		RETURNING id, slug, name, platform, created_at, icon_emoji, icon_image
-	`, input.Slug, input.Name, input.Platform, input.IconEmoji, imageBytes).Scan(
-		&created.ID,
-		&created.Slug,
-		&created.Name,
-		&created.Platform,
-		&created.CreatedAt, &created.IconEmoji, &storedImage,
-	)
+		RETURNING `+projectColumns,
+		input.Slug, input.Name, input.Platform, input.IconEmoji, imageBytes))
 	if err != nil {
 		return project.Project{}, translateProjectError("create project", err)
 	}
-	created.IconImage = project.IconDataURL(storedImage)
-	created.CreatedAt = created.CreatedAt.UTC()
 	return created, nil
 }
 
 func (repository *projectRepository) List(ctx context.Context, scope access.Scope) ([]project.Project, error) {
 	predicate, args := scopePredicate(scope, "id", 1)
 	rows, err := repository.pool.Query(ctx, `
-		SELECT id, slug, name, platform, created_at, icon_emoji, icon_image
+		SELECT `+projectColumns+`
 		FROM projects
 		WHERE true`+predicate+`
 		ORDER BY id
@@ -83,13 +98,10 @@ func (repository *projectRepository) List(ctx context.Context, scope access.Scop
 
 	projects := make([]project.Project, 0)
 	for rows.Next() {
-		var listed project.Project
-		var storedImage []byte
-		if err := rows.Scan(&listed.ID, &listed.Slug, &listed.Name, &listed.Platform, &listed.CreatedAt, &listed.IconEmoji, &storedImage); err != nil {
+		listed, err := scanProject(rows)
+		if err != nil {
 			return nil, translateProjectError("scan project", err)
 		}
-		listed.IconImage = project.IconDataURL(storedImage)
-		listed.CreatedAt = listed.CreatedAt.UTC()
 		projects = append(projects, listed)
 	}
 	if err := rows.Err(); err != nil {
@@ -101,24 +113,14 @@ func (repository *projectRepository) List(ctx context.Context, scope access.Scop
 func (repository *projectRepository) FindBySlug(ctx context.Context, scope access.Scope, slug string) (project.Project, error) {
 	predicate, predicateArgs := scopePredicate(scope, "id", 2)
 	args := append([]any{slug}, predicateArgs...)
-	var found project.Project
-	var storedImage []byte
-	err := repository.pool.QueryRow(ctx, `
-		SELECT id, slug, name, platform, created_at, icon_emoji, icon_image
+	found, err := scanProject(repository.pool.QueryRow(ctx, `
+		SELECT `+projectColumns+`
 		FROM projects
-		WHERE slug = $1`+predicate+`
-	`, args...).Scan(
-		&found.ID,
-		&found.Slug,
-		&found.Name,
-		&found.Platform,
-		&found.CreatedAt, &found.IconEmoji, &storedImage,
-	)
+		WHERE slug = $1`+predicate,
+		args...))
 	if err != nil {
 		return project.Project{}, translateProjectError("find project by slug", err)
 	}
-	found.IconImage = project.IconDataURL(storedImage)
-	found.CreatedAt = found.CreatedAt.UTC()
 	return found, nil
 }
 
@@ -131,25 +133,28 @@ func (repository *projectRepository) Update(ctx context.Context, slug string, in
 			return project.Project{}, err
 		}
 	}
-	var storedImage []byte
-	var updated project.Project
-	err := repository.pool.QueryRow(ctx, `
+	updated, err := scanProject(repository.pool.QueryRow(ctx, `
 		UPDATE projects
 		SET name = $2, platform = $3, icon_emoji = COALESCE($4, icon_emoji), icon_image = NULLIF(COALESCE($5::bytea, icon_image), ''::bytea)
 		WHERE slug = $1
-		RETURNING id, slug, name, platform, created_at, icon_emoji, icon_image
-	`, slug, input.Name, input.Platform, input.IconEmoji, imageBytes).Scan(
-		&updated.ID,
-		&updated.Slug,
-		&updated.Name,
-		&updated.Platform,
-		&updated.CreatedAt, &updated.IconEmoji, &storedImage,
-	)
+		RETURNING `+projectColumns,
+		slug, input.Name, input.Platform, input.IconEmoji, imageBytes))
 	if err != nil {
 		return project.Project{}, translateProjectError("update project", err)
 	}
-	updated.IconImage = project.IconDataURL(storedImage)
-	updated.CreatedAt = updated.CreatedAt.UTC()
+	return updated, nil
+}
+
+func (repository *projectRepository) UpdateSourceLinks(ctx context.Context, slug string, links project.SourceLinks) (project.Project, error) {
+	updated, err := scanProject(repository.pool.QueryRow(ctx, `
+		UPDATE projects
+		SET source_link_template = $2, source_stack_root = $3, source_root = $4
+		WHERE slug = $1
+		RETURNING `+projectColumns,
+		slug, links.Template, links.StackRoot, links.SourceRoot))
+	if err != nil {
+		return project.Project{}, translateProjectError("update project source links", err)
+	}
 	return updated, nil
 }
 
