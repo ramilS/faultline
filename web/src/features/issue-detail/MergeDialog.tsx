@@ -21,6 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { messageFor } from "@/errors";
 import { useDebounce } from "@/hooks/useDebounce";
+import { issueCulprit, issueTitle } from "@/lib/issueLabels";
 import { mergeConfirmationMessage } from "@/issueMerge";
 
 const SEARCH_DEBOUNCE_MS = 250;
@@ -178,10 +179,10 @@ function CandidateSearch({ slug, sourceIssueId, onPick }: CandidateSearchProps) 
                 >
                   <span className="flex items-start gap-2">
                     <LevelBadge level={issue.level} className="mt-0.5 shrink-0" />
-                    <span className="min-w-0 text-sm break-words">{issue.title}</span>
+                    <span className="min-w-0 text-sm break-words">{issueTitle(issue)}</span>
                   </span>
                   <span className="text-muted-foreground mt-1 block font-mono text-xs break-all">
-                    {issue.culprit}
+                    {issueCulprit(issue)}
                   </span>
                 </button>
               </li>
@@ -223,7 +224,7 @@ function ConfirmMerge({ sourceIssueId, sourceTimesSeen, target, onBack, onMerged
     <>
       <DialogHeader>
         <DialogTitle>Merge is permanent</DialogTitle>
-        <DialogDescription>{mergeConfirmationMessage(sourceTimesSeen, target.title)}</DialogDescription>
+        <DialogDescription>{mergeConfirmationMessage(sourceTimesSeen, issueTitle(target))}</DialogDescription>
       </DialogHeader>
 
       <div className="space-y-3">

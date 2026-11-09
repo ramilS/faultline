@@ -574,3 +574,43 @@ func TestResolverCarriesFrameVariablesOnlyWhereOneFrameStaysOne(t *testing.T) {
 		}
 	}
 }
+
+func TestResolverRenamesTheObfuscatedExceptionType(t *testing.T) {
+	mapping := shopMapping + "com.acme.shop.PaymentDeclined -> bu4:\ncom.acme.shop.CardError -> a.d:\n"
+	cases := map[string]struct {
+		value              string
+		wantType, wantFrom string
+	}{
+		"top-level class reported as the type": {
+			value:    `{"type":"bu4","value":"declined","stacktrace":{"frames":[` + frame("a.b", "b", "SourceFile", 7) + `]}}`,
+			wantType: "PaymentDeclined", wantFrom: "bu4",
+		},
+		"package reported as the module": {
+			value:    `{"type":"d","module":"a","value":"declined","stacktrace":{"frames":[` + frame("a.b", "b", "SourceFile", 7) + `]}}`,
+			wantType: "CardError", wantFrom: "d",
+		},
+		"class the mapping does not know": {
+			value:    exceptionValue("java.lang.IllegalStateException", "boom", frame("a.b", "b", "SourceFile", 7)),
+			wantType: "java.lang.IllegalStateException", wantFrom: "",
+		},
+		"only the type is in the mapping": {
+			value:    `{"type":"bu4","value":"declined","stacktrace":{"frames":[` + frame("z.z", "q", "SourceFile", 1) + `]}}`,
+			wantType: "PaymentDeclined", wantFrom: "bu4",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			repo := &fakeRepository{mappings: map[string]Stored{mappingUUID: storedMapping(t, mapping)}}
+			fallback := &recordingFallback{}
+
+			exception, err := resolve(t, repo, fallback, androidEvent(proguardImages(mappingUUID), tc.value))
+
+			if err != nil || fallback.calls != 0 {
+				t.Fatalf("Resolve err = %v, fallback calls = %d", err, fallback.calls)
+			}
+			if exception.Type != tc.wantType || exception.ObfuscatedType != tc.wantFrom {
+				t.Fatalf("type = %q from %q, want %q from %q", exception.Type, exception.ObfuscatedType, tc.wantType, tc.wantFrom)
+			}
+		})
+	}
+}

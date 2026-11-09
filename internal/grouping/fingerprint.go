@@ -46,6 +46,9 @@ type Result struct {
 	// LegacyFingerprint is the fingerprint without symbols, set only when it
 	// differs from Fingerprint.
 	LegacyFingerprint string
+	// SymbolicatedCulprit is Culprit when its frame is named by a native
+	// symbol, and "" otherwise.
+	SymbolicatedCulprit string
 }
 
 // Fingerprint derives a deterministic fingerprint, title, and culprit. Priority:
@@ -60,11 +63,16 @@ func Fingerprint(input GroupingInput) Result {
 	}
 
 	exception := input.Exception
-	title := titleFor(exception, input.Message)
-	culprit := culpritFor(exception.Frames)
+	title := Title(exception, input.Message)
+	culprit := Culprit(exception.Frames)
 
 	if frames := groupingFrames(exception.Frames); len(frames) > 0 {
-		result := Result{Fingerprint: hashFrames(exception.Type, frames, frameKey), Title: title, Culprit: culprit}
+		result := Result{
+			Fingerprint:         hashFrames(exception.Type, frames, frameKey),
+			Title:               title,
+			Culprit:             culprit,
+			SymbolicatedCulprit: symbolicatedCulprit(exception.Frames),
+		}
 		if legacy := hashFrames(exception.Type, frames, unsymbolizedFrameKey); legacy != result.Fingerprint {
 			result.LegacyFingerprint = legacy
 		}
@@ -116,7 +124,17 @@ func groupingFrameIndices(frames []Frame) []int {
 	return indices
 }
 
-func culpritFor(frames []Frame) string {
+func symbolicatedCulprit(frames []Frame) string {
+	for _, frame := range frames {
+		if frame.InApp {
+			return normalizeFunction(frame.Symbol)
+		}
+	}
+	return ""
+}
+
+// Culprit names the first in-app frame the way the fingerprint keys it.
+func Culprit(frames []Frame) string {
 	for _, frame := range frames {
 		if frame.InApp {
 			return frameKey(frame)
@@ -125,7 +143,7 @@ func culpritFor(frames []Frame) string {
 	return ""
 }
 
-func titleFor(exception *Exception, message string) string {
+func Title(exception *Exception, message string) string {
 	line := firstLine(message)
 	if line == "" {
 		line = firstLine(exception.Value)

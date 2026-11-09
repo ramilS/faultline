@@ -44,6 +44,8 @@ function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
     fingerprint: "fp-1",
     title: "TimeoutError: upstream timed out",
     culprit: "billing.charge_customer",
+    display_title: "",
+    display_culprit: "",
     level: "error",
     status: "unresolved",
     assignee: null,

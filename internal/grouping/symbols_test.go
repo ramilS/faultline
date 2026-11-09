@@ -124,3 +124,27 @@ func TestWithSymbolsLooksUpOnlyUnnamedGroupingFrames(t *testing.T) {
 		t.Fatal("an event whose frames all have names must not be looked up")
 	}
 }
+
+func TestSymbolicatedCulpritIsSetOnlyWhenASymbolNamesTheCulpritFrame(t *testing.T) {
+	names := namesBy(map[uint64]string{0x100c014: "submit_order", 0x100b020: "main"})
+	cases := map[string]struct {
+		input GroupingInput
+		want  string
+	}{
+		"culprit frame named by its symbol": {
+			input: nativeCrash(nativeFrame(0xc000, 0x100c014), nativeFrame(0xb000, 0x100b020)),
+			want:  "submit_order",
+		},
+		"culprit frame without a symbol, a later frame with one": {
+			input: nativeCrash(nativeFrame(0xa000, 0x100a000), nativeFrame(0xb000, 0x100b020)),
+			want:  "",
+		},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			if got := symbolicated(t, tc.input, names).SymbolicatedCulprit; got != tc.want {
+				t.Fatalf("SymbolicatedCulprit = %q, want %q", got, tc.want)
+			}
+		})
+	}
+}

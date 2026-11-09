@@ -18,6 +18,8 @@ function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
     fingerprint: "fp-1",
     title: "TimeoutError: upstream timed out",
     culprit: "billing.charge_customer",
+    display_title: "",
+    display_culprit: "",
     level: "error",
     status: "unresolved",
     assignee: null,
@@ -94,6 +96,22 @@ describe("IssueHeader", () => {
     renderHeader(buildIssue(), null, { at: "2026-09-09T00:00:00Z", release: null });
 
     expect(screen.getByText("Regressed")).toBeDefined();
+  });
+
+  it("titles the issue with its symbolicated labels once it has them", () => {
+    renderHeader(
+      buildIssue({
+        title: "bu4: Source error",
+        culprit: "a.b.b",
+        display_title: "SourceException: Source error",
+        display_culprit: "com.example.player.Source.open (Source.kt)"
+      }),
+      null
+    );
+
+    expect(screen.getByRole("heading", { level: 1 }).textContent).toBe("SourceException: Source error");
+    screen.getByText("com.example.player.Source.open (Source.kt)");
+    expect(screen.queryByText("a.b.b")).toBeNull();
   });
 
   it("shows no regression mark on an issue that has not come back", () => {

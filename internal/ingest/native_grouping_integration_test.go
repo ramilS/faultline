@@ -23,6 +23,7 @@ import (
 	"github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/pipeline"
 	migrate "github.com/ramilS/faultline/internal/platform/migrate"
+	"github.com/ramilS/faultline/internal/storage"
 	storagepostgres "github.com/ramilS/faultline/internal/storage/postgres"
 	"github.com/ramilS/faultline/internal/testdatabase"
 )
@@ -50,6 +51,13 @@ type nativeGroupingHarness struct {
 
 func newNativeGroupingHarness(t *testing.T) *nativeGroupingHarness {
 	t.Helper()
+	return startNativeGroupingHarness(t, func(pool *pgxpool.Pool, _ func(error)) storage.EventSink {
+		return storagepostgres.NewEventSink(pool)
+	})
+}
+
+func startNativeGroupingHarness(t *testing.T, sinkFor func(*pgxpool.Pool, func(error)) storage.EventSink) *nativeGroupingHarness {
+	t.Helper()
 	databaseURL := testdatabase.StartTimescale(t)
 	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
 	t.Cleanup(cancel)
@@ -72,7 +80,7 @@ func newNativeGroupingHarness(t *testing.T) *nativeGroupingHarness {
 		t.Fatalf("seed ingest key: %v", err)
 	}
 
-	harness.persistence = pipeline.New(storagepostgres.NewEventSink(pool), 1, time.Now, func(err error) { t.Errorf("persistence error: %v", err) })
+	harness.persistence = pipeline.New(sinkFor(pool, harness.report), 1, time.Now, func(err error) { t.Errorf("persistence error: %v", err) })
 	harness.persistence.Start()
 	t.Cleanup(func() {
 		stopCtx, stopCancel := context.WithTimeout(context.Background(), 5*time.Second)

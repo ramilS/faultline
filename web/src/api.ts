@@ -131,6 +131,8 @@ export interface IssueSummary {
   fingerprint: string;
   title: string;
   culprit: string;
+  display_title: string;
+  display_culprit: string;
   level: string;
   status: IssueStatus;
   assignee: Assignee | null;

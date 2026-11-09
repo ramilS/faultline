@@ -13,6 +13,8 @@ function buildIssue(overrides: Partial<ListedIssue>): ListedIssue {
     fingerprint: "fp",
     title: "TypeError: x is undefined",
     culprit: "app.render",
+    display_title: "",
+    display_culprit: "",
     level: "error",
     status: "unresolved",
     assignee: null,
@@ -46,6 +48,29 @@ function renderTable(issues: readonly ListedIssue[], projectNames: ReadonlyMap<s
 }
 
 describe("IssueTable", () => {
+  it("lists an issue under its symbolicated labels once it has them", () => {
+    renderTable(
+      [
+        buildIssue({
+          id: 3,
+          title: "bu4: Source error",
+          culprit: "Muslicast+0xfa6408",
+          display_title: "SourceException: Source error",
+          display_culprit: "PlaybackController.invoke (PlaybackController.swift)"
+        }),
+        buildIssue({ id: 4, title: "TypeError: x is undefined", culprit: "app.render" })
+      ],
+      null
+    );
+
+    expect(screen.getByRole("link", { name: "SourceException: Source error" }).getAttribute("href")).toBe("/web/issues/3");
+    screen.getByText("PlaybackController.invoke (PlaybackController.swift)");
+    expect(screen.queryByText("bu4: Source error")).toBeNull();
+    expect(screen.queryByText("Muslicast+0xfa6408")).toBeNull();
+    screen.getByRole("link", { name: "TypeError: x is undefined" });
+    screen.getByText("app.render");
+  });
+
   it("shows an ignored issue's progress toward its condition on the status badge", () => {
     renderTable(
       [buildIssue({ status: "ignored", ignore_until: { kind: "events", until: null, count: 100, so_far: 99 } })],

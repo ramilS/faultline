@@ -62,6 +62,9 @@ type fakeRepository struct {
 	lastTimelineScope     access.Scope
 	lastMergeScope        access.Scope
 	lastUserFacetScope    access.Scope
+
+	refreshedLabels map[int64]Labels
+	refreshErr      error
 }
 
 func (f *fakeRepository) List(_ context.Context, filters ListFilters) (Page, error) {
@@ -132,6 +135,13 @@ func (f *fakeRepository) IssueUsers(_ context.Context, scope access.Scope, issue
 }
 func (f *fakeRepository) RecordView(context.Context, access.Scope, int64, int64) error {
 	return nil
+}
+func (f *fakeRepository) RefreshDisplayLabels(_ context.Context, issueID int64, labels Labels) error {
+	if f.refreshedLabels == nil {
+		f.refreshedLabels = map[int64]Labels{}
+	}
+	f.refreshedLabels[issueID] = labels
+	return f.refreshErr
 }
 
 func TestListIssuesClampsLimitAndDefaultsSort(t *testing.T) {
@@ -804,5 +814,66 @@ func TestServiceForwardsScopeToRepository(t *testing.T) {
 				t.Fatalf("repository received scope %+v, want %+v", got, current.scope)
 			}
 		})
+	}
+}
+
+func retracedException() *sourcemap.Exception {
+	return &sourcemap.Exception{Type: "SourceException", ObfuscatedType: "bu4", Value: "Source error"}
+}
+
+func TestEventReadsRefreshTheIssueDisplayLabels(t *testing.T) {
+	reads := map[string]func(*Service) (EventDetail, error){
+		"latest event": func(service *Service) (EventDetail, error) {
+			return service.LatestEvent(t.Context(), access.Unrestricted(), 5)
+		},
+		"one event": func(service *Service) (EventDetail, error) {
+			return service.Event(t.Context(), access.Unrestricted(), uuid.New())
+		},
+	}
+	for name, read := range reads {
+		t.Run(name, func(t *testing.T) {
+			event := symbolicatableEvent()
+			event.IssueID = 5
+			repository := &fakeRepository{event: event}
+
+			if _, err := read(NewService(repository, &fakeResolver{exception: retracedException()})); err != nil {
+				t.Fatal(err)
+			}
+
+			if got := repository.refreshedLabels[5]; got != (Labels{Title: "SourceException: Source error"}) {
+				t.Fatalf("refreshed labels = %+v", repository.refreshedLabels)
+			}
+		})
+	}
+}
+
+func TestEventReadLeavesLabelsAloneWhenNothingWasSymbolicated(t *testing.T) {
+	repository := &fakeRepository{event: symbolicatableEvent()}
+	service := NewService(repository, &fakeResolver{exception: &sourcemap.Exception{Type: "TypeError", Value: "boom"}})
+
+	if _, err := service.LatestEvent(t.Context(), access.Unrestricted(), 5); err != nil {
+		t.Fatal(err)
+	}
+	if repository.refreshedLabels != nil {
+		t.Fatalf("refreshed %+v from a still-raw event", repository.refreshedLabels)
+	}
+}
+
+func TestEventReadSurvivesAFailedLabelRefresh(t *testing.T) {
+	failure := errors.New("database down")
+	repository := &fakeRepository{event: symbolicatableEvent(), refreshErr: failure}
+	var reported []error
+	service := NewServiceWithOptions(repository, ServiceOptions{
+		Resolver:    &fakeResolver{exception: retracedException()},
+		ReportError: func(err error) { reported = append(reported, err) },
+	})
+
+	got, err := service.LatestEvent(t.Context(), access.Unrestricted(), 5)
+
+	if err != nil || got.SymbolicatedException == nil {
+		t.Fatalf("LatestEvent = %v, %v; want the symbolicated event", got.SymbolicatedException, err)
+	}
+	if len(reported) != 1 || !errors.Is(reported[0], failure) {
+		t.Fatalf("reported %v, want the refresh failure", reported)
 	}
 }

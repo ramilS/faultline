@@ -163,7 +163,7 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 	textClause := ""
 	if filters.Text != "" {
 		args = append(args, "%"+filters.Text+"%")
-		textClause = fmt.Sprintf(" AND (i.title ILIKE $%d OR i.culprit ILIKE $%d)", len(args), len(args))
+		textClause = fmt.Sprintf(" AND (i.title ILIKE $%[1]d OR i.culprit ILIKE $%[1]d OR i.display_title ILIKE $%[1]d OR i.display_culprit ILIKE $%[1]d)", len(args))
 	}
 
 	scopeClause, scopeArgs := scopePredicate(filters.Scope, "p.id", len(args)+1)
@@ -173,7 +173,7 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 	builder := &strings.Builder{}
 	builder.WriteString(cte)
 	fmt.Fprintf(builder, `
-		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
+		SELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,
 		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,
 		       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,
 		       %s
@@ -231,7 +231,7 @@ func (repository *issueRepository) List(ctx context.Context, filters issue.ListF
 			ignore                      ignoreColumns
 		)
 		if err := rows.Scan(&listed.ID, &listed.Fingerprint, &listed.Title, &listed.Culprit,
-			&listed.Level, &listed.Status, &listed.TimesSeen, &listed.UsersSeen, &listed.FirstSeen, &listed.LastSeen,
+			&listed.DisplayTitle, &listed.DisplayCulprit, &listed.Level, &listed.Status, &listed.TimesSeen, &listed.UsersSeen, &listed.FirstSeen, &listed.LastSeen,
 			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug,
 			&ignore.until, &ignore.timesSeenTarget, &ignore.usersSeenTarget, &ignore.threshold, &listed.Unseen); err != nil {
 			return issue.Page{}, translateIssueError("scan issue", err)
@@ -279,7 +279,7 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 		ignore                      ignoreColumns
 	)
 	err := repository.pool.QueryRow(ctx, `
-		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
+		SELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,
 		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id, p.slug,
 		       i.regressed_at, i.regressed_in_release,
 		       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold
@@ -287,7 +287,7 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
 		WHERE i.id = $1`+predicate, args...).Scan(&detail.Issue.ID, &detail.Issue.Fingerprint, &detail.Issue.Title,
-		&detail.Issue.Culprit, &detail.Issue.Level, &detail.Issue.Status,
+		&detail.Issue.Culprit, &detail.Issue.DisplayTitle, &detail.Issue.DisplayCulprit, &detail.Issue.Level, &detail.Issue.Status,
 		&detail.Issue.TimesSeen, &detail.Issue.UsersSeen, &detail.Issue.FirstSeen, &detail.Issue.LastSeen,
 		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID, &detail.Issue.ProjectSlug,
 		&regressedAt, &regressedInRelease,
@@ -1282,7 +1282,7 @@ func (repository *issueRepository) LatestEvent(ctx context.Context, scope access
 	predicate, scopeArgs := scopePredicate(scope, "project_id", 2)
 	args := append([]any{id}, scopeArgs...)
 	return repository.scanEventDetail(ctx, `
-		SELECT event_id, timestamp, received_at, level, environment, release, message, request_id, payload, project_id
+		SELECT event_id, timestamp, received_at, level, environment, release, message, request_id, payload, project_id, issue_id
 		FROM events WHERE issue_id = $1`+predicate+` ORDER BY received_at DESC, event_id DESC LIMIT 1
 	`, args...)
 }
@@ -1291,7 +1291,7 @@ func (repository *issueRepository) Event(ctx context.Context, scope access.Scope
 	predicate, scopeArgs := scopePredicate(scope, "project_id", 2)
 	args := append([]any{pgtype.UUID{Bytes: [16]byte(eventID), Valid: true}}, scopeArgs...)
 	return repository.scanEventDetail(ctx, `
-		SELECT event_id, timestamp, received_at, level, environment, release, message, request_id, payload, project_id
+		SELECT event_id, timestamp, received_at, level, environment, release, message, request_id, payload, project_id, issue_id
 		FROM events WHERE event_id = $1`+predicate+` ORDER BY received_at DESC LIMIT 1
 	`, args...)
 }
@@ -1303,7 +1303,7 @@ func (repository *issueRepository) scanEventDetail(ctx context.Context, query st
 		payload []byte
 	)
 	err := repository.pool.QueryRow(ctx, query, args...).Scan(&eventID, &detail.Timestamp, &detail.ReceivedAt,
-		&detail.Level, &detail.Environment, &detail.Release, &detail.Message, &detail.RequestID, &payload, &detail.ProjectID)
+		&detail.Level, &detail.Environment, &detail.Release, &detail.Message, &detail.RequestID, &payload, &detail.ProjectID, &detail.IssueID)
 	if err != nil {
 		return issue.EventDetail{}, translateIssueError("event detail", err)
 	}

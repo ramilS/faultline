@@ -286,3 +286,21 @@ func findIssue(t *testing.T, issues []storage.IssueDelta, fingerprint string) st
 	t.Fatalf("issue %s not found", fingerprint)
 	return storage.IssueDelta{}
 }
+
+func TestAggregateKeepsTheFirstSymbolicatedCulpritOfAnIssue(t *testing.T) {
+	at := time.Date(2026, 7, 15, 10, 0, 0, 0, time.UTC)
+	unnamed := item(1, "fp-a", at, nil, "")
+	named := item(1, "fp-a", at, nil, "")
+	named.SymbolicatedCulprit = "submit_order"
+	renamed := item(1, "fp-a", at, nil, "")
+	renamed.SymbolicatedCulprit = "render_banner"
+
+	aggregate := newAggregator()
+	aggregate.add(unnamed)
+	aggregate.add(named)
+	aggregate.add(renamed)
+
+	if got := findIssue(t, aggregate.drain()[0].Issues, "fp-a").SymbolicatedCulprit; got != "submit_order" {
+		t.Fatalf("SymbolicatedCulprit = %q, want the first one an event carried", got)
+	}
+}

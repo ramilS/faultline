@@ -11,6 +11,8 @@ function issue(id: number, overrides: Partial<ListedIssue> = {}): ListedIssue {
     fingerprint: `fp${id}`,
     title: `Issue ${id}`,
     culprit: `module.fn${id}`,
+    display_title: "",
+    display_culprit: "",
     level: "error",
     status: "unresolved",
     assignee: null,

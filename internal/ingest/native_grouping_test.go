@@ -67,6 +67,9 @@ func TestDispatchGroupsANativeCrashFromTwoBuildsByFunction(t *testing.T) {
 	if buildA.Culprit != "submit_order" {
 		t.Fatalf("culprit = %q, want the crashing function", buildA.Culprit)
 	}
+	if buildA.SymbolicatedCulprit != "submit_order" || unnamedA.SymbolicatedCulprit != "" {
+		t.Fatalf("symbolicated culprits = %q / %q, want the function only once it is named", buildA.SymbolicatedCulprit, unnamedA.SymbolicatedCulprit)
+	}
 	if calls != 2 {
 		t.Fatalf("symbol lookups = %d, want one per event", calls)
 	}

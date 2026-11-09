@@ -10,6 +10,7 @@ import (
 	"io"
 	"slices"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/google/uuid"
@@ -54,6 +55,7 @@ type payloadFrame struct {
 
 type payloadException struct {
 	Type       string `json:"type"`
+	Module     string `json:"module"`
 	Value      string `json:"value"`
 	Stacktrace *struct {
 		Frames []payloadFrame `json:"frames"`
@@ -89,6 +91,11 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 	var retracedAny bool
 	for _, value := range values {
 		exception := &sourcemap.Exception{Type: value.Type, Value: value.Value, Cause: head}
+		if original, found := originalClass(mappings, value.obfuscatedClass()); found {
+			exception.ObfuscatedType = value.Type
+			exception.Type = simpleName(original)
+			retracedAny = true
+		}
 		if value.Stacktrace != nil {
 			frames, retraced := retraceFrames(value.Stacktrace.Frames, mappings)
 			exception.Frames = frames
@@ -222,9 +229,32 @@ func proguardUUIDs(raw json.RawMessage) []string {
 	return found
 }
 
+// obfuscatedClass is the exception's class as the mapping names it: Sentry's
+// Java SDK reports the simple name as the type and the package as the module.
+func (value payloadException) obfuscatedClass() string {
+	if value.Module == "" {
+		return value.Type
+	}
+	return value.Module + "." + value.Type
+}
+
+func originalClass(mappings []*Mapping, obfuscated string) (string, bool) {
+	for _, mapping := range mappings {
+		if original, ok := mapping.OriginalClass(obfuscated); ok {
+			return original, true
+		}
+	}
+	return "", false
+}
+
+func simpleName(class string) string {
+	return class[strings.LastIndexByte(class, '.')+1:]
+}
+
 func classesIn(values []payloadException) map[string]struct{} {
 	classes := map[string]struct{}{}
 	for _, value := range values {
+		classes[value.obfuscatedClass()] = struct{}{}
 		if value.Stacktrace == nil {
 			continue
 		}

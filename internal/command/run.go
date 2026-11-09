@@ -198,7 +198,15 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		),
 	)
 	symbolicationResolver := reportingResolver{resolver: nativeResolver, report: reportPersistenceError}
-	issueService := issue.NewService(database.Issues, symbolicationResolver)
+	issueService := issue.NewServiceWithOptions(database.Issues, issue.ServiceOptions{
+		Resolver:    symbolicationResolver,
+		ReportError: reportPersistenceError,
+	})
+	if database.IssueLabeller != nil {
+		labellerCtx, stopLabeller := context.WithCancel(ctx)
+		defer stopLabeller()
+		go database.IssueLabeller.Run(labellerCtx, symbolicationResolver)
+	}
 	reportIngestError := func(err error) {
 		fmt.Fprintf(stderr, "faultline: ingestion: %v\n", err)
 	}

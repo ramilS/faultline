@@ -36,6 +36,20 @@ func TestTelegramTextOmitsAbsentCulpritEnvironmentAndLink(t *testing.T) {
 	}
 }
 
+func TestTelegramTextShowsTheDisplayLabelsOverTheRawOnes(t *testing.T) {
+	text := TelegramText(Notification{
+		Trigger: TriggerNew, Title: "bu4: boom", Culprit: "Muslicast+0xfa6408",
+		DisplayTitle: "SourceException: boom", DisplayCulprit: "PlaybackController.invoke", Level: "error",
+	})
+
+	if !strings.Contains(text, "<blockquote>SourceException: boom</blockquote>") || !strings.Contains(text, "<code>PlaybackController.invoke</code>") {
+		t.Fatalf("TelegramText = %q, want the display labels", text)
+	}
+	if strings.Contains(text, "bu4") || strings.Contains(text, "Muslicast+") {
+		t.Fatalf("TelegramText = %q, still shows a raw label", text)
+	}
+}
+
 func TestTelegramTextTruncatesALongTitleByRunes(t *testing.T) {
 	text := TelegramText(Notification{Trigger: TriggerNew, Title: strings.Repeat("ж", maxTitleRunes+50), Level: "error"})
 
@@ -48,7 +62,8 @@ func TestWebhookBodyWireShape(t *testing.T) {
 	sentAt := time.Date(2026, 10, 15, 9, 30, 0, 0, time.FixedZone("MSK", 3*3600))
 	body, err := WebhookBody(Notification{
 		Trigger: TriggerRegression, ProjectSlug: "shop", ProjectName: "Shop", IssueID: 7,
-		Title: "boom", Culprit: "app.js", Level: "error", Environment: "production",
+		Title: "bu4: boom", Culprit: "a.b.c", DisplayTitle: "SourceException: boom", DisplayCulprit: "Source.open (Source.kt)",
+		Level: "error", Environment: "production",
 		EventID:  "0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11",
 		IssueURL: "https://faultline.example/shop/issues/7",
 	}, 42, sentAt)
@@ -58,7 +73,8 @@ func TestWebhookBodyWireShape(t *testing.T) {
 
 	want := `{"event":"issue.regression","delivery_id":42,"sent_at":"2026-10-15T06:30:00Z",` +
 		`"project":{"slug":"shop","name":"Shop"},` +
-		`"issue":{"id":7,"title":"boom","culprit":"app.js","level":"error","url":"https://faultline.example/shop/issues/7"},` +
+		`"issue":{"id":7,"title":"bu4: boom","culprit":"a.b.c","display_title":"SourceException: boom","display_culprit":"Source.open (Source.kt)",` +
+		`"level":"error","url":"https://faultline.example/shop/issues/7"},` +
 		`"environment":"production","event_id":"0b7e3a52-8c5e-4c43-9a4e-6f0a3f0f2b11"}`
 	if string(body) != want {
 		t.Fatalf("body =\n%s\nwant\n%s", body, want)

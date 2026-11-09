@@ -24,6 +24,14 @@ type Original struct {
 	Resolved bool
 }
 
+func (m *Mapping) OriginalClass(obfuscated string) (string, bool) {
+	mapped := m.classes[obfuscated]
+	if mapped == nil {
+		return "", false
+	}
+	return mapped.original, true
+}
+
 // Retrace maps an obfuscated frame to the original frames it stands for,
 // innermost first. It reports false when the class is not in the mapping. A
 // known class with an unknown method, or an ambiguous one, still yields the

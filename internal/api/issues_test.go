@@ -1927,3 +1927,56 @@ func TestIgnoreUntilWireShape(t *testing.T) {
 		})
 	}
 }
+
+func TestIssueResponsesCarryRawAndDisplayLabels(t *testing.T) {
+	now := time.Now().UTC()
+	labelled := issue.Issue{
+		ID: 5, Title: "bu4: Source error", Culprit: "Muslicast+0xfa6408",
+		DisplayTitle: "SourceException: Source error", DisplayCulprit: "PlaybackController.invoke",
+		Status: issue.StatusUnresolved, FirstSeen: now, LastSeen: now,
+	}
+	want := map[string]any{
+		"title": "bu4: Source error", "culprit": "Muslicast+0xfa6408",
+		"display_title": "SourceException: Source error", "display_culprit": "PlaybackController.invoke",
+	}
+	paths := map[string]func() map[string]any{
+		"detail": func() map[string]any {
+			handler := NewIssueHandler(&stubIssueService{detail: issue.Detail{Issue: labelled}}, Options{})
+			recorder := httptest.NewRecorder()
+			request := newIssueRequest(http.MethodGet, "/api/v1/issues/5", "")
+			request.SetPathValue("id", "5")
+			handler.IssueDetail(recorder, request)
+			var body struct {
+				Issue map[string]any `json:"issue"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode %s: %v", recorder.Body.String(), err)
+			}
+			return body.Issue
+		},
+		"list": func() map[string]any {
+			handler := NewIssueHandler(&stubIssueService{page: issue.Page{Issues: []issue.Issue{labelled}}}, Options{})
+			recorder := httptest.NewRecorder()
+			request := newIssueRequest(http.MethodGet, "/api/v1/projects/web/issues", "")
+			request.SetPathValue("slug", "web")
+			handler.ListIssues(recorder, request)
+			var body struct {
+				Issues []map[string]any `json:"issues"`
+			}
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil || len(body.Issues) != 1 {
+				t.Fatalf("decode %s: %v", recorder.Body.String(), err)
+			}
+			return body.Issues[0]
+		},
+	}
+	for name, read := range paths {
+		t.Run(name, func(t *testing.T) {
+			got := read()
+			for key, value := range want {
+				if got[key] != value {
+					t.Fatalf("%s = %v, want %v (issue %v)", key, got[key], value, got)
+				}
+			}
+		})
+	}
+}

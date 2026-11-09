@@ -101,11 +101,14 @@ type Frame struct {
 
 // Exception mirrors the browser exception payload with resolved frames,
 // preserving frame and cause order.
+// ObfuscatedType is the type as the app reported it, set only when a mapping
+// renamed it to Type.
 type Exception struct {
-	Type   string
-	Value  string
-	Frames []Frame
-	Cause  *Exception
+	Type           string
+	ObfuscatedType string
+	Value          string
+	Frames         []Frame
+	Cause          *Exception
 }
 
 // Resolver produces a symbolicated exception for a stored event. A nil result

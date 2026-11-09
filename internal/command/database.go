@@ -64,6 +64,9 @@ type runtimeDatabase struct {
 	// Either may be nil in tests, which then run without notifications.
 	NotificationChannels notify.ChannelRepository
 	NotificationQueue    notify.Queue
+	// IssueLabeller fills display labels after EventSink commits a batch. It
+	// may be nil in tests, which then run without it.
+	IssueLabeller *issue.Labeller
 	// GroupingRules is the full CRUD repository backing the dashboard's
 	// grouping-rule editor (grouping.NewRuleService). It is a separate handle
 	// on the same underlying storage GroupingRuleCache reads through — not a
@@ -99,8 +102,8 @@ func (database *runtimeDatabase) settingsLookup() ingest.SettingsLookup {
 
 // assembleDatabase wires the Postgres-backed adapters. reportError observes
 // failures from best-effort background/post-commit steps that must not fail
-// the operation that triggered them — currently just the issue-merge
-// sparkline refresh (see storagepostgres.IssueRepositoryOptions.ReportError).
+// the operation that triggered them: the issue-merge sparkline refresh (see
+// storagepostgres.IssueRepositoryOptions.ReportError) and issue labelling.
 func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, reportError func(error)) (*runtimeDatabase, error) {
 	pool, err := platformpostgres.Open(ctx, configuration)
 	if err != nil {
@@ -115,6 +118,7 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		ReportError: reportError,
 	})
 	projectSettings := storagepostgres.NewProjectSettingsStore(pool)
+	labeller := issue.NewLabeller(storagepostgres.NewIssueLabelStore(pool), issue.LabellerOptions{ReportError: reportError})
 	artifactLimits := []storagepostgres.ArtifactStoreOption{
 		storagepostgres.WithArtifactQuota(configuration.ArtifactQuotaBytes),
 		storagepostgres.WithDebugFileRetention(configuration.DebugFileRetention),
@@ -138,7 +142,8 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		Releases:             storagepostgres.NewReleaseStore(pool),
 		GroupingRules:        groupingRules,
 		IngestKeys:           storagepostgres.NewIngestKeyStore(pool),
-		EventSink:            storagepostgres.NewEventSink(pool),
+		EventSink:            storagepostgres.NewEventSinkWithOptions(pool, storagepostgres.EventSinkOptions{AfterCommit: labeller.Offer}),
+		IssueLabeller:        labeller,
 		GroupingRuleCache:    ruleCache,
 		ProjectSettings:      ingest.NewProjectSettingsCache(projectSettings, time.Now),
 		Scrubbing:            projectSettings,

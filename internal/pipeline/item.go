@@ -13,8 +13,10 @@ type Item struct {
 	LegacyFingerprint string
 	Title             string
 	Culprit           string
-	Tags              map[string]string
-	Release           string
+	// SymbolicatedCulprit is grouping.Result.SymbolicatedCulprit.
+	SymbolicatedCulprit string
+	Tags                map[string]string
+	Release             string
 	// User is the event's identity contribution to its issue's distinct-user
 	// count, already reduced to one key/value pair by the ingest package. It
 	// is nil when the event carried no identity, or when the identity was an

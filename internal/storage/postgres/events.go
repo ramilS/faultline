@@ -26,7 +26,8 @@ const maxTagValuesPerKey = 200
 const otherTagValue = "<other>"
 
 type eventSink struct {
-	pool *pgxpool.Pool
+	pool        *pgxpool.Pool
+	afterCommit func(storage.Batch, map[string]int64)
 }
 
 var _ storage.EventSink = (*eventSink)(nil)
@@ -35,7 +36,22 @@ var _ storage.EventSink = (*eventSink)(nil)
 // releases, issues, events, and issue_tag_values tables backed by pool, and
 // queues a notification delivery for every issue a batch creates or reopens.
 func NewEventSink(pool *pgxpool.Pool) storage.EventSink {
-	return &eventSink{pool: pool}
+	return NewEventSinkWithOptions(pool, EventSinkOptions{})
+}
+
+// EventSinkOptions configures NewEventSinkWithOptions. AfterCommit receives
+// every committed batch with the issue each delta's fingerprint was stored
+// on; it runs on the persisting shard, so it must not block.
+type EventSinkOptions struct {
+	AfterCommit func(storage.Batch, map[string]int64)
+}
+
+func NewEventSinkWithOptions(pool *pgxpool.Pool, options EventSinkOptions) storage.EventSink {
+	afterCommit := options.AfterCommit
+	if afterCommit == nil {
+		afterCommit = func(storage.Batch, map[string]int64) {}
+	}
+	return &eventSink{pool: pool, afterCommit: afterCommit}
 }
 
 // PersistBatch writes one shard flush in a single transaction: it registers new
@@ -87,6 +103,7 @@ func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) er
 	if err := tx.Commit(ctx); err != nil {
 		return fmt.Errorf("commit persist batch: %w", err)
 	}
+	sink.afterCommit(batch, issueIDs)
 	return nil
 }
 

@@ -61,15 +61,19 @@ type assigneeResponse struct {
 }
 
 type issueResponse struct {
-	ID          int64             `json:"id"`
-	ProjectSlug string            `json:"project_slug"`
-	Fingerprint string            `json:"fingerprint"`
-	Title       string            `json:"title"`
-	Culprit     string            `json:"culprit"`
-	Level       string            `json:"level"`
-	Status      string            `json:"status"`
-	Assignee    *assigneeResponse `json:"assignee"`
-	TimesSeen   int64             `json:"times_seen"`
+	ID          int64  `json:"id"`
+	ProjectSlug string `json:"project_slug"`
+	Fingerprint string `json:"fingerprint"`
+	Title       string `json:"title"`
+	Culprit     string `json:"culprit"`
+	// DisplayTitle and DisplayCulprit are "" until an event of the issue was
+	// symbolicated; clients show them over Title and Culprit when set.
+	DisplayTitle   string            `json:"display_title"`
+	DisplayCulprit string            `json:"display_culprit"`
+	Level          string            `json:"level"`
+	Status         string            `json:"status"`
+	Assignee       *assigneeResponse `json:"assignee"`
+	TimesSeen      int64             `json:"times_seen"`
 	// UsersSeen is issues.users_seen (see issue.Issue.UsersSeen). Past
 	// ingest.MaxUsersPerIssue it is a floor, not an exact count: new
 	// identities stop being recorded once the cap is hit, so a client
@@ -749,19 +753,21 @@ func toIssueResponse(source issue.Issue) issueResponse {
 		assignee = &assigneeResponse{ID: source.Assignee.ID, Name: source.Assignee.Name, Email: source.Assignee.Email}
 	}
 	response := issueResponse{
-		ID:          source.ID,
-		ProjectSlug: source.ProjectSlug,
-		Fingerprint: source.Fingerprint,
-		Title:       source.Title,
-		Culprit:     source.Culprit,
-		Level:       source.Level,
-		Status:      string(source.Status),
-		Assignee:    assignee,
-		TimesSeen:   source.TimesSeen,
-		UsersSeen:   source.UsersSeen,
-		FirstSeen:   source.FirstSeen.Format(time.RFC3339),
-		LastSeen:    source.LastSeen.Format(time.RFC3339),
-		IgnoreUntil: toIgnoreUntilResponse(source.IgnoreUntil),
+		ID:             source.ID,
+		ProjectSlug:    source.ProjectSlug,
+		Fingerprint:    source.Fingerprint,
+		Title:          source.Title,
+		Culprit:        source.Culprit,
+		DisplayTitle:   source.DisplayTitle,
+		DisplayCulprit: source.DisplayCulprit,
+		Level:          source.Level,
+		Status:         string(source.Status),
+		Assignee:       assignee,
+		TimesSeen:      source.TimesSeen,
+		UsersSeen:      source.UsersSeen,
+		FirstSeen:      source.FirstSeen.Format(time.RFC3339),
+		LastSeen:       source.LastSeen.Format(time.RFC3339),
+		IgnoreUntil:    toIgnoreUntilResponse(source.IgnoreUntil),
 	}
 	// A windowless request never populates Issue.Counts (attachSparklines
 	// takes that branch only for a non-zero Window), so its emptiness is what

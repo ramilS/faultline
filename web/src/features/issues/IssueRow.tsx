@@ -9,6 +9,7 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { eventCount, eventCountTitle, sparklineCounts, sparklineWindow } from "@/lib/issueFilters";
+import { issueCulprit, issueTitle } from "@/lib/issueLabels";
 import { cn } from "@/lib/utils";
 
 export interface IssueRowProps {
@@ -51,7 +52,7 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
         <Checkbox
           checked={selected}
           onCheckedChange={(value) => onSelectedChange(value === true)}
-          aria-label={`Select ${issue.title}`}
+          aria-label={`Select ${issueTitle(issue)}`}
         />
       </TableCell>
 
@@ -71,10 +72,10 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
               issue.unseen ? "font-semibold" : "font-normal"
             )}
           >
-            {issue.title}
+            {issueTitle(issue)}
           </Link>
         </span>
-        <span className="text-muted-foreground block truncate font-mono text-xs">{issue.culprit}</span>
+        <span className="text-muted-foreground block truncate font-mono text-xs">{issueCulprit(issue)}</span>
         {/* Narrow viewports drop the level and status columns so the title keeps
             usable width; the same information moves under it rather than away. */}
         <span className="mt-1 flex items-center gap-1.5 sm:hidden">

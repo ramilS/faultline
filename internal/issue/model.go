@@ -81,14 +81,16 @@ type Issue struct {
 	ID int64
 	// ProjectSlug names the project the issue belongs to, so a list spanning
 	// every project can link each row back to its own project.
-	ProjectSlug string
-	Fingerprint string
-	Title       string
-	Culprit     string
-	Level       string
-	Status      Status
-	Assignee    *Assignee
-	TimesSeen   int64
+	ProjectSlug    string
+	Fingerprint    string
+	Title          string
+	Culprit        string
+	DisplayTitle   string
+	DisplayCulprit string
+	Level          string
+	Status         Status
+	Assignee       *Assignee
+	TimesSeen      int64
 	// UsersSeen is the distinct-identity count aggregated into issues.users_seen
 	// (see upsertUserIdentities). Past ingest.MaxUsersPerIssue it saturates into
 	// a floor rather than staying exact — new identities stop being recorded,
@@ -187,6 +189,7 @@ type EventSummary struct {
 type EventDetail struct {
 	EventSummary
 	ProjectID             int64
+	IssueID               int64
 	RequestID             *string
 	Payload               json.RawMessage
 	SymbolicatedException *sourcemap.Exception

@@ -111,6 +111,7 @@ func scrubItem(item *pipeline.Item, settings ProjectSettings, reportError func(e
 	item.Row.Message = settings.scrubber.String(item.Row.Message)
 	item.Title = settings.scrubber.String(item.Title)
 	item.Culprit = settings.scrubber.String(item.Culprit)
+	item.SymbolicatedCulprit = settings.scrubber.String(item.SymbolicatedCulprit)
 	item.Tags = scrubTags(item.Tags, settings.scrubber)
 	if len(item.Row.Payload) == 0 {
 		return
@@ -212,8 +213,9 @@ func fingerprintItem(projectID int64, event Event, input grouping.GroupingInput,
 			Message: event.Message, Release: event.Release, RequestID: event.RequestID,
 			Fingerprint: result.Fingerprint, Payload: event.Payload,
 		},
-		LegacyFingerprint: legacy,
-		Title:             result.Title, Culprit: result.Culprit, Tags: event.Tags, Release: release,
+		LegacyFingerprint:   legacy,
+		SymbolicatedCulprit: deterministic.SymbolicatedCulprit,
+		Title:               result.Title, Culprit: result.Culprit, Tags: event.Tags, Release: release,
 		User: itemUserIdentity(event.User),
 	}
 }

@@ -1,6 +1,7 @@
 package notify
 
 import (
+	"cmp"
 	"encoding/json"
 	"fmt"
 	"html"
@@ -67,9 +68,9 @@ func TelegramText(n Notification) string {
 		emoji = "📁"
 	}
 	fmt.Fprintf(&text, "<b>%s %s</b>\n<b>%s %s</b>\n\n", triggerIcon(n.Trigger), headline(n.Trigger), html.EscapeString(emoji), html.EscapeString(n.ProjectName))
-	fmt.Fprintf(&text, "<blockquote>%s</blockquote>\n", html.EscapeString(truncate(n.Title, maxTitleRunes)))
-	if n.Culprit != "" {
-		fmt.Fprintf(&text, "\n<b>Location:</b> <code>%s</code>", html.EscapeString(truncate(n.Culprit, maxCulpritRunes)))
+	fmt.Fprintf(&text, "<blockquote>%s</blockquote>\n", html.EscapeString(truncate(n.ShownTitle(), maxTitleRunes)))
+	if culprit := n.ShownCulprit(); culprit != "" {
+		fmt.Fprintf(&text, "\n<b>Location:</b> <code>%s</code>", html.EscapeString(truncate(culprit, maxCulpritRunes)))
 	}
 	fmt.Fprintf(&text, "\n<b>Level:</b> %s <code>%s</code>", levelIcon(n.Level), html.EscapeString(n.Level))
 	if n.Environment != "" {
@@ -99,11 +100,13 @@ type webhookProject struct {
 }
 
 type webhookIssue struct {
-	ID      int64   `json:"id"`
-	Title   string  `json:"title"`
-	Culprit string  `json:"culprit"`
-	Level   string  `json:"level"`
-	URL     *string `json:"url"`
+	ID             int64   `json:"id"`
+	Title          string  `json:"title"`
+	Culprit        string  `json:"culprit"`
+	DisplayTitle   string  `json:"display_title"`
+	DisplayCulprit string  `json:"display_culprit"`
+	Level          string  `json:"level"`
+	URL            *string `json:"url"`
 }
 
 // WebhookEvent is the event name a webhook receives for trigger, also sent
@@ -115,11 +118,14 @@ func WebhookEvent(trigger Trigger) string {
 // WebhookBody renders n as the JSON body of a webhook POST.
 func WebhookBody(n Notification, deliveryID int64, sentAt time.Time) ([]byte, error) {
 	payload := webhookPayload{
-		Event:       WebhookEvent(n.Trigger),
-		DeliveryID:  deliveryID,
-		SentAt:      sentAt.UTC(),
-		Project:     webhookProject{Slug: n.ProjectSlug, Name: n.ProjectName},
-		Issue:       webhookIssue{ID: n.IssueID, Title: n.Title, Culprit: n.Culprit, Level: n.Level},
+		Event:      WebhookEvent(n.Trigger),
+		DeliveryID: deliveryID,
+		SentAt:     sentAt.UTC(),
+		Project:    webhookProject{Slug: n.ProjectSlug, Name: n.ProjectName},
+		Issue: webhookIssue{
+			ID: n.IssueID, Title: n.Title, Culprit: n.Culprit,
+			DisplayTitle: n.DisplayTitle, DisplayCulprit: n.DisplayCulprit, Level: n.Level,
+		},
 		Environment: n.Environment,
 	}
 	if n.IssueURL != "" {
@@ -129,6 +135,14 @@ func WebhookBody(n Notification, deliveryID int64, sentAt time.Time) ([]byte, er
 		payload.EventID = &n.EventID
 	}
 	return json.Marshal(payload)
+}
+
+func (n Notification) ShownTitle() string {
+	return cmp.Or(n.DisplayTitle, n.Title)
+}
+
+func (n Notification) ShownCulprit() string {
+	return cmp.Or(n.DisplayCulprit, n.Culprit)
 }
 
 func truncate(value string, limit int) string {

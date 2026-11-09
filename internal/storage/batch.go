@@ -78,6 +78,9 @@ type IssueDelta struct {
 	// symbols; an issue one of them created takes the events when no issue has
 	// Fingerprint.
 	LegacyFingerprints []string
+	// SymbolicatedCulprit is the first non-empty grouping.Result.SymbolicatedCulprit
+	// of the events.
+	SymbolicatedCulprit string
 }
 
 // Batch is one shard's flush for a single project: releases to register,
@@ -102,6 +105,9 @@ func MergeIssueDelta(base, incoming IssueDelta) IssueDelta {
 	merged.LastSeen = latest(base.LastSeen, incoming.LastSeen)
 	merged.Tags = mergeTagDeltas(base.Tags, incoming.Tags)
 	merged.Users = mergeUserDeltas(base.Users, incoming.Users)
+	if merged.SymbolicatedCulprit == "" {
+		merged.SymbolicatedCulprit = incoming.SymbolicatedCulprit
+	}
 	merged.LegacyFingerprints = slices.Clone(base.LegacyFingerprints)
 	for _, legacy := range incoming.LegacyFingerprints {
 		if !slices.Contains(merged.LegacyFingerprints, legacy) {

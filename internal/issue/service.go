@@ -32,22 +32,42 @@ type Repository interface {
 	TagValues(context.Context, access.Scope, string, string, string, int) ([]TagValue, error)
 	IssueUsers(context.Context, access.Scope, int64, int) (UserFacet, error)
 	RecordView(ctx context.Context, scope access.Scope, userID, issueID int64) error
+	// RefreshDisplayLabels stores the labels that are set and differ from the
+	// issue's raw title and culprit, leaving the others as they are.
+	RefreshDisplayLabels(ctx context.Context, issueID int64, labels Labels) error
 }
 
 // Service applies issue query and triage policy over a Repository.
 type Service struct {
-	repository Repository
-	resolver   sourcemap.Resolver
+	repository  Repository
+	resolver    sourcemap.Resolver
+	reportError func(error)
+}
+
+// ServiceOptions configures NewServiceWithOptions. Resolver enables read-time
+// symbolication; ReportError observes a failed display-label refresh, which
+// never fails the event read that triggered it.
+type ServiceOptions struct {
+	Resolver    sourcemap.Resolver
+	ReportError func(error)
 }
 
 // NewService builds the issue service. An optional source-map resolver enables
 // read-time browser symbolication; at most one resolver is used.
 func NewService(repository Repository, resolvers ...sourcemap.Resolver) *Service {
-	service := &Service{repository: repository}
+	var options ServiceOptions
 	if len(resolvers) > 0 {
-		service.resolver = resolvers[0]
+		options.Resolver = resolvers[0]
 	}
-	return service
+	return NewServiceWithOptions(repository, options)
+}
+
+func NewServiceWithOptions(repository Repository, options ServiceOptions) *Service {
+	reportError := options.ReportError
+	if reportError == nil {
+		reportError = func(error) {}
+	}
+	return &Service{repository: repository, resolver: options.Resolver, reportError: reportError}
 }
 
 func ValidateStatus(status Status) bool {
@@ -204,7 +224,7 @@ func (s *Service) LatestEvent(ctx context.Context, scope access.Scope, id int64)
 	if err != nil {
 		return EventDetail{}, fmt.Errorf("latest event: %w", err)
 	}
-	return s.symbolicate(ctx, event), nil
+	return s.symbolicateAndLabel(ctx, event), nil
 }
 
 func (s *Service) Event(ctx context.Context, scope access.Scope, eventID uuid.UUID) (EventDetail, error) {
@@ -212,7 +232,19 @@ func (s *Service) Event(ctx context.Context, scope access.Scope, eventID uuid.UU
 	if err != nil {
 		return EventDetail{}, fmt.Errorf("event: %w", err)
 	}
-	return s.symbolicate(ctx, event), nil
+	return s.symbolicateAndLabel(ctx, event), nil
+}
+
+func (s *Service) symbolicateAndLabel(ctx context.Context, event EventDetail) EventDetail {
+	event = s.symbolicate(ctx, event)
+	labels := LabelsFrom(event.SymbolicatedException, event.Message)
+	if labels.IsEmpty() {
+		return event
+	}
+	if err := s.repository.RefreshDisplayLabels(ctx, event.IssueID, labels); err != nil {
+		s.reportError(fmt.Errorf("refresh display labels of issue %d: %w", event.IssueID, err))
+	}
+	return event
 }
 
 // symbolicate attaches the event's exception, with original-source locations

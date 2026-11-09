@@ -8,6 +8,7 @@ import { RelativeTime } from "@/components/RelativeTime";
 import { Sparkline } from "@/components/Sparkline";
 import { StatusBadge } from "@/components/StatusBadge";
 import { useProjectName } from "@/features/projects/useProjectName";
+import { issueCulprit, issueTitle } from "@/lib/issueLabels";
 
 import { publishPinnedHeight, STICKY_HEADER_HEIGHT_PROPERTY } from "./stickyHeader";
 
@@ -28,8 +29,9 @@ interface IssueHeaderProps {
  * the one thing the page is about.
  */
 export function IssueHeader({ issue, slug, latestMessage, regression, actions }: IssueHeaderProps) {
+  const title = issueTitle(issue);
   const trimmedMessage = latestMessage?.trim() ?? "";
-  const hasDistinctMessage = trimmedMessage !== "" && trimmedMessage !== issue.title.trim();
+  const hasDistinctMessage = trimmedMessage !== "" && trimmedMessage !== title.trim();
   const banner = useRef<HTMLElement>(null);
   const projectName = useProjectName(slug);
 
@@ -90,7 +92,7 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
 
       <div className="mt-2 flex flex-wrap items-start justify-between gap-x-6 gap-y-3">
         <div className="min-w-0 flex-1">
-          <h1 className="text-lg font-semibold tracking-tight break-words">{issue.title}</h1>
+          <h1 className="text-lg font-semibold tracking-tight break-words">{title}</h1>
           {hasDistinctMessage && (
             <p className="text-foreground/80 mt-0.5 line-clamp-2 text-sm break-words">{latestMessage}</p>
           )}
@@ -98,7 +100,7 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
               culprit is clamped rather than left to run the header past the
               viewport — unlike the title, it is detail, not identity. */}
           <p className="text-muted-foreground mt-1 line-clamp-2 font-mono text-xs break-all sm:line-clamp-none">
-            {issue.culprit}
+            {issueCulprit(issue)}
           </p>
           <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <LevelBadge level={issue.level} />

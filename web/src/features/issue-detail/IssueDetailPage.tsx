@@ -10,6 +10,7 @@ import { issueViews } from "@/features/issues/issueViews";
 import type { TimeRangeValue } from "@/features/issues/TimeRangePicker";
 import { useProjects } from "@/features/projects/ProjectsProvider";
 import { ALL_TIME_WINDOW } from "@/lib/issueFilters";
+import { issueTitle } from "@/lib/issueLabels";
 
 import { EventFilterBar } from "./EventFilterBar";
 import { EventNavigator } from "./EventNavigator";
@@ -85,7 +86,7 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
   const issue = useAsyncResource(loadIssue);
   const loadedIssue =
     issue.state.status === "ready" && !isMergedIssue(issue.state.value) ? issue.state.value.issue : null;
-  useDocumentTitle(loadedIssue?.title ?? null);
+  useDocumentTitle(loadedIssue === null ? null : issueTitle(loadedIssue));
   const viewedIssueId = loadedIssue?.id ?? null;
   useEffect(() => {
     if (viewedIssueId !== null) {

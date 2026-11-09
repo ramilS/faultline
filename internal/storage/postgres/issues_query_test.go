@@ -110,7 +110,7 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 	}
 
 	wantQuery := "\n" +
-		"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
+		"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,\n" +
 		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
 		"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
 		"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
@@ -123,7 +123,7 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 		" AND (EXISTS (SELECT 1 FROM issue_tag_values t\n" +
 		"\t\tWHERE t.issue_id = i.id AND t.key = $3 AND (t.value = ANY($2))))" +
 		" AND (i.status::text = ANY($4))" +
-		" AND (i.title ILIKE $5 OR i.culprit ILIKE $5)"
+		" AND (i.title ILIKE $5 OR i.culprit ILIKE $5 OR i.display_title ILIKE $5 OR i.display_culprit ILIKE $5)"
 	if query != wantQuery {
 		t.Fatalf("query = %q, want %q", query, wantQuery)
 	}
@@ -166,7 +166,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 		}
 
 		wantQuery := "\n" +
-			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
+			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
 			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
 			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
@@ -178,7 +178,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			" AND true" +
 			" AND i.last_seen >= now() - $2::interval" +
 			" AND (i.status::text = ANY($3))" +
-			" AND (i.title ILIKE $4 OR i.culprit ILIKE $4)"
+			" AND (i.title ILIKE $4 OR i.culprit ILIKE $4 OR i.display_title ILIKE $4 OR i.display_culprit ILIKE $4)"
 		if query != wantQuery {
 			t.Fatalf("query = %q, want %q", query, wantQuery)
 		}
@@ -223,7 +223,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t\t  AND bucket >= $2 AND bucket < $3\n" +
 			"\t)" +
 			"\n" +
-			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
+			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
 			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
 			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
@@ -235,7 +235,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			" AND true" +
 			" AND i.id IN (SELECT issue_id FROM windowed)" +
 			" AND (i.status::text = ANY($4))" +
-			" AND (i.title ILIKE $5 OR i.culprit ILIKE $5)"
+			" AND (i.title ILIKE $5 OR i.culprit ILIKE $5 OR i.display_title ILIKE $5 OR i.display_culprit ILIKE $5)"
 		if query != wantQuery {
 			t.Fatalf("query = %q, want %q", query, wantQuery)
 		}
@@ -317,7 +317,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t\t  AND bucket >= $2 AND bucket < $3\n" +
 			"\t)" +
 			"\n" +
-			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
+			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.display_title, i.display_culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
 			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
 			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
@@ -330,7 +330,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			" AND i.id IN (SELECT issue_id FROM windowed)" +
 			" AND (EXISTS (SELECT 1 FROM issue_tag_values t\n" +
 			"\t\tWHERE t.issue_id = i.id AND t.key = $5 AND (t.value = ANY($4))))" +
-			" AND (i.title ILIKE $6 OR i.culprit ILIKE $6)"
+			" AND (i.title ILIKE $6 OR i.culprit ILIKE $6 OR i.display_title ILIKE $6 OR i.display_culprit ILIKE $6)"
 		if query != wantQuery {
 			t.Fatalf("query = %q, want %q", query, wantQuery)
 		}
