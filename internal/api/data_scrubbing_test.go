@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 
@@ -315,6 +316,51 @@ func TestPreviewDataScrubbingRejectsBadRequests(t *testing.T) {
 
 			if recorder.Code != http.StatusBadRequest {
 				t.Fatalf("response = %d %s, want 400", recorder.Code, recorder.Body.String())
+			}
+		})
+	}
+}
+
+// scopedProjects finds project 5 only when the caller's scope admits it, the
+// way the Postgres resolver does.
+type scopedProjects struct{}
+
+func (scopedProjects) FindProject(_ context.Context, scope access.Scope, _ string) (project.Project, error) {
+	if scope.IsUnrestricted() || slices.Contains(scope.ProjectIDs(), 5) {
+		return project.Project{ID: 5}, nil
+	}
+	return project.Project{}, project.ErrNotFound
+}
+
+func TestDataScrubbingWritesResolveTheProjectInTheCallersScope(t *testing.T) {
+	const config = `{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]}`
+	cases := map[string]struct {
+		scope access.Scope
+		want  int
+	}{
+		"project outside the scope": {access.Limited([]int64{7}), http.StatusNotFound},
+		"project inside the scope":  {access.Limited([]int64{5}), http.StatusOK},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			var reported errorRecorder
+			service := &stubDataScrubbingService{}
+			handler := newDataScrubbingHandler(service, scopedProjects{}, &reported)
+			scoped := func(method, body string) *http.Request {
+				request := dataScrubbingRequest(method, body)
+				return request.WithContext(access.ContextWithScope(request.Context(), tc.scope))
+			}
+
+			update := httptest.NewRecorder()
+			handler.Update(update, scoped(http.MethodPut, config))
+			preview := httptest.NewRecorder()
+			handler.Preview(preview, scoped(http.MethodPost, `{"config":`+config+`,"sample":"x"}`))
+
+			if update.Code != tc.want || preview.Code != tc.want {
+				t.Fatalf("update = %d, preview = %d, want %d", update.Code, preview.Code, tc.want)
+			}
+			if tc.want == http.StatusNotFound && service.updateCalls != 0 {
+				t.Fatalf("update reached the service %d times outside the scope", service.updateCalls)
 			}
 		})
 	}

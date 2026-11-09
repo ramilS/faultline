@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"net/http"
 
-	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/project"
 	"github.com/ramilS/faultline/internal/scrub"
 )
@@ -117,7 +116,11 @@ func (h *DataScrubbingHandler) Update(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "enabled, extra_fields, safe_fields and rules are all required")
 		return
 	}
-	resolved, ok := resolveProjectInScope(w, r, access.Unrestricted(), r.PathValue("slug"), h.projects, h.reportError)
+	scope, ok := scopeOrRefuse(w, r)
+	if !ok {
+		return
+	}
+	resolved, ok := resolveProjectInScope(w, r, scope, r.PathValue("slug"), h.projects, h.reportError)
 	if !ok {
 		return
 	}
@@ -152,7 +155,11 @@ func (h *DataScrubbingHandler) Preview(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "config with enabled, extra_fields, safe_fields and rules is required")
 		return
 	}
-	resolved, ok := resolveProjectInScope(w, r, access.Unrestricted(), r.PathValue("slug"), h.projects, h.reportError)
+	scope, ok := scopeOrRefuse(w, r)
+	if !ok {
+		return
+	}
+	resolved, ok := resolveProjectInScope(w, r, scope, r.PathValue("slug"), h.projects, h.reportError)
 	if !ok {
 		return
 	}
