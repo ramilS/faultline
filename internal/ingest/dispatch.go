@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/ramilS/faultline/internal/grouping"
+	"github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/pipeline"
 	"github.com/ramilS/faultline/internal/scrub"
 	"github.com/ramilS/faultline/internal/storage"
@@ -27,6 +28,10 @@ type RuleLookup func(ctx context.Context, projectID int64) ([]grouping.Rule, err
 // durably-spilled envelopes, which is why it now lives here instead.)
 type SettingsLookup func(ctx context.Context, projectID int64) (ProjectSettings, error)
 
+// NativeSymbolLookup is (*native.Resolver).FunctionNames; nil keys native
+// frames on their offsets.
+type NativeSymbolLookup func(ctx context.Context, projectID int64, images []native.Image, addresses []uint64) ([]string, error)
+
 // DispatchEnvelope dedups (authoritatively), fingerprints, and dispatches each
 // event, then dispatches the envelope's spans. Shared by the flag-off handler
 // and the durable feeder so both build identical pipeline items. The rule and
@@ -36,8 +41,10 @@ type SettingsLookup func(ctx context.Context, projectID int64) (ProjectSettings,
 // an outage, its failed-query and reportError cost) up to MaxEvents times
 // over. A rule lookup failure is reported once and never blocks ingestion —
 // every event still fingerprints deterministically. A settings lookup
-// failure is also reported once, and fails closed (see resolveSettings).
-func DispatchEnvelope(ctx context.Context, env Envelope, projectID int64, receivedAt time.Time, dedup *Deduplicator, rules RuleLookup, settings SettingsLookup, dispatch Dispatcher, dispatchSpans SpanDispatcher, reportError func(error)) {
+// failure is also reported once, and fails closed (see resolveSettings). A
+// native symbol lookup failure is reported per event and leaves the frames it
+// could not name keyed on their offsets.
+func DispatchEnvelope(ctx context.Context, env Envelope, projectID int64, receivedAt time.Time, dedup *Deduplicator, rules RuleLookup, settings SettingsLookup, symbols NativeSymbolLookup, dispatch Dispatcher, dispatchSpans SpanDispatcher, reportError func(error)) {
 	resolvedRules, applyRules := resolveEnvelopeRules(ctx, projectID, rules, reportError)
 	resolvedSettings := resolveSettings(ctx, projectID, settings, reportError)
 	gateIPIdentity(env.Events, resolvedSettings.StoreUserIP)
@@ -45,7 +52,8 @@ func DispatchEnvelope(ctx context.Context, env Envelope, projectID int64, receiv
 		if dedup.Seen(projectID, event.EventID) {
 			continue
 		}
-		fingerprint, project, item := fingerprintItem(projectID, event, receivedAt, resolvedRules, applyRules)
+		input := groupingInputWithSymbols(ctx, projectID, event, symbols, reportError)
+		fingerprint, project, item := fingerprintItem(projectID, event, input, receivedAt, resolvedRules, applyRules)
 		scrubItem(&item, resolvedSettings, reportError)
 		dispatch(fingerprint, project, item)
 	}
@@ -152,11 +160,46 @@ func gateIPIdentity(events []Event, storeUserIP bool) {
 	}
 }
 
-func fingerprintItem(projectID int64, event Event, receivedAt time.Time, rules []grouping.Rule, applyRules bool) (string, int64, pipeline.Item) {
-	deterministic := grouping.Fingerprint(event.groupingInput())
+// groupingInputWithSymbols names the native frames grouping uses. The debug
+// files are user uploads parsed on this path, so a panic while reading one is
+// reported like any other lookup failure instead of losing the event, or
+// crash-looping durable replay on the same record.
+func groupingInputWithSymbols(ctx context.Context, projectID int64, event Event, symbols NativeSymbolLookup, reportError func(error)) grouping.GroupingInput {
+	input := event.groupingInput()
+	if symbols == nil {
+		return input
+	}
+	named, err := grouping.WithSymbols(input, func(addresses []uint64) (names []string, err error) {
+		images := native.ImagesFromDebugMeta(event.DebugMeta)
+		if len(images) == 0 {
+			return nil, nil
+		}
+		defer func() {
+			if recovered := recover(); recovered != nil {
+				names, err = nil, fmt.Errorf("panic: %v", recovered)
+			}
+		}()
+		return symbols(ctx, projectID, images, addresses)
+	})
+	if err != nil {
+		reportError(fmt.Errorf("native symbol lookup for event %s: %w", event.EventID, err))
+	}
+	return named
+}
+
+func fingerprintItem(projectID int64, event Event, input grouping.GroupingInput, receivedAt time.Time, rules []grouping.Rule, applyRules bool) (string, int64, pipeline.Item) {
+	deterministic := grouping.Fingerprint(input)
 	result := deterministic
+	legacy := deterministic.LegacyFingerprint
 	if applyRules {
-		result = grouping.EvaluateRules(rules, event.groupingRuleInput(), deterministic)
+		ruleInput := event.groupingRuleInput()
+		result = grouping.EvaluateRules(rules, ruleInput, deterministic)
+		if legacy != "" {
+			legacy = grouping.EvaluateRules(rules, ruleInput, grouping.Result{Fingerprint: legacy}).Fingerprint
+		}
+	}
+	if legacy == result.Fingerprint {
+		legacy = ""
 	}
 	release := ""
 	if event.Release != nil {
@@ -169,7 +212,8 @@ func fingerprintItem(projectID int64, event Event, receivedAt time.Time, rules [
 			Message: event.Message, Release: event.Release, RequestID: event.RequestID,
 			Fingerprint: result.Fingerprint, Payload: event.Payload,
 		},
-		Title: result.Title, Culprit: result.Culprit, Tags: event.Tags, Release: release,
+		LegacyFingerprint: legacy,
+		Title:             result.Title, Culprit: result.Culprit, Tags: event.Tags, Release: release,
 		User: itemUserIdentity(event.User),
 	}
 }

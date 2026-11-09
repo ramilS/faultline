@@ -324,7 +324,7 @@ func TestResolverRecordsAnImageAsUsedOncePerInterval(t *testing.T) {
 	}
 	repository := &countingRepository{stored: Stored{BlobID: 1, DebugID: upload.Objects[0].DebugID, VMAddr: upload.Objects[0].VMAddr, Compressed: upload.Compressed, UncompressedBytes: upload.UncompressedBytes}}
 	clock := &fakeClock{at: time.Unix(1_000, 0)}
-	r := NewResolver(repository, &fallbackResolver{}).(*resolver)
+	r := NewResolver(repository, &fallbackResolver{})
 	r.used = usage.NewThrottle(usage.Interval, clock.now)
 	input := sourcemap.EventInput{ProjectID: 7, Payload: []byte(`{"exception":{"values":[{"type":"Crash","stacktrace":{"frames":[{"instruction_addr":"0x100010"}]}}]},"debug_meta":{"images":[{"type":"macho","debug_id":"01000000-0000-0000-0000-000000000000","image_addr":"0x100000","image_size":"0x1000"}]}}`)}
 

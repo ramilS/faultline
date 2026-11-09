@@ -237,7 +237,9 @@ func regressionMarks(batch storage.Batch, issueIDs map[string]int64, transitions
 // grouping-rule cache lookup that would otherwise catch it is
 // stale or never gets a chance to run (see grouping.EvaluateRules's doc
 // comment on why a text-rule-derived fingerprint needs this structural
-// backstop too).
+// backstop too). A fingerprint that names native frames by symbol may be
+// routed to the issue its legacy fingerprint created instead — see
+// resolveFingerprintAliases.
 func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[string]int64, map[int64]issueTransition, error) {
 	issueIDs := make(map[string]int64, len(batch.Issues))
 	transitions := make(map[int64]issueTransition)
@@ -254,10 +256,24 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 		return nil, nil, err
 	}
 
+	untombstoned := make([]storage.IssueDelta, 0, len(batch.Issues))
+	for _, issue := range batch.Issues {
+		if _, ok := tombstoneTargets[issue.Fingerprint]; !ok {
+			untombstoned = append(untombstoned, issue)
+		}
+	}
+	aliasTargets, err := resolveFingerprintAliases(ctx, tx, batch.ProjectID, untombstoned)
+	if err != nil {
+		return nil, nil, err
+	}
+
 	fresh := make([]storage.IssueDelta, 0, len(batch.Issues))
-	redirected := make(map[int64]storage.IssueDelta, len(tombstoneTargets))
+	redirected := make(map[int64]storage.IssueDelta, len(tombstoneTargets)+len(aliasTargets))
 	for _, issue := range batch.Issues {
 		targetID, ok := tombstoneTargets[issue.Fingerprint]
+		if !ok {
+			targetID, ok = aliasTargets[issue.Fingerprint]
+		}
 		if !ok {
 			fresh = append(fresh, issue)
 			continue
@@ -271,7 +287,7 @@ func upsertIssues(ctx context.Context, tx pgx.Tx, batch storage.Batch) (map[stri
 	}
 
 	if len(redirected) > 0 {
-		if err := applyTombstoneRedirectCounters(ctx, tx, redirected, transitions); err != nil {
+		if err := applyRedirectCounters(ctx, tx, redirected, transitions); err != nil {
 			return nil, nil, err
 		}
 	}
@@ -373,16 +389,16 @@ func resolveMergeTombstones(ctx context.Context, tx pgx.Tx, projectID int64, fin
 	return targets, nil
 }
 
-// applyTombstoneRedirectCounters folds each redirected delta's counters
-// directly into its live target issue by id — never through the
-// (project_id, fingerprint) ON CONFLICT path, which would touch the
-// tombstone row itself. One batched UPDATE regardless of how many
+// applyRedirectCounters folds each redirected delta's counters directly into
+// its live target issue by id — never through the (project_id, fingerprint)
+// ON CONFLICT path, which would touch the tombstone row itself, or create an
+// issue for a fingerprint aliased to another. One batched UPDATE regardless of how many
 // fingerprints redirected to how many targets, so this stays cheap on the
 // per-flush hot path.
 //
-// A merge target that was resolved is reopened here too, and recorded in
+// A target that was resolved is reopened here too, and recorded in
 // transitions as a regression.
-func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected map[int64]storage.IssueDelta, transitions map[int64]issueTransition) error {
+func applyRedirectCounters(ctx context.Context, tx pgx.Tx, redirected map[int64]storage.IssueDelta, transitions map[int64]issueTransition) error {
 	ids := make([]int64, 0, len(redirected))
 	timesSeen := make([]int64, 0, len(redirected))
 	firstSeen := make([]time.Time, 0, len(redirected))
@@ -404,7 +420,7 @@ func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected m
 		RETURNING new.id, new.level, old.status = 'resolved'
 	`, ids, timesSeen, firstSeen, lastSeen)
 	if err != nil {
-		return fmt.Errorf("apply tombstone redirect counters: %w", err)
+		return fmt.Errorf("apply redirect counters: %w", err)
 	}
 	defer rows.Close()
 	for rows.Next() {
@@ -414,14 +430,14 @@ func applyTombstoneRedirectCounters(ctx context.Context, tx pgx.Tx, redirected m
 			reopened bool
 		)
 		if err := rows.Scan(&id, &level, &reopened); err != nil {
-			return fmt.Errorf("scan tombstone redirect target: %w", err)
+			return fmt.Errorf("scan redirect target: %w", err)
 		}
 		if reopened {
 			transitions[id] = issueTransition{trigger: notify.TriggerRegression, level: level}
 		}
 	}
 	if err := rows.Err(); err != nil {
-		return fmt.Errorf("iterate tombstone redirect targets: %w", err)
+		return fmt.Errorf("iterate redirect targets: %w", err)
 	}
 	return nil
 }

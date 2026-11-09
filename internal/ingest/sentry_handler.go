@@ -81,7 +81,7 @@ func (h *Handler) ServeSentry(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		} else {
-			DispatchEnvelope(r.Context(), parsed, info.ProjectID, receivedAt, h.dedup, h.rules, h.settings, h.dispatch, h.dispatchSpans, h.reportError)
+			DispatchEnvelope(r.Context(), parsed, info.ProjectID, receivedAt, h.dedup, h.rules, h.settings, h.symbols, h.dispatch, h.dispatchSpans, h.reportError)
 		}
 	}
 

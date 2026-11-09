@@ -73,6 +73,7 @@ type Event struct {
 	Tags        map[string]string
 	User        *EventUser
 	Payload     json.RawMessage
+	DebugMeta   json.RawMessage
 }
 
 // EventUser is the single identity an event contributes to its issue's

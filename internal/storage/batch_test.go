@@ -2,6 +2,7 @@ package storage
 
 import (
 	"encoding/json"
+	"slices"
 	"testing"
 	"time"
 )
@@ -130,6 +131,21 @@ func TestBatchMergeIssueDeltaDoesNotMutateInputs(t *testing.T) {
 	}
 	if incoming.Count != 1 || incoming.Tags[0].Count != 1 {
 		t.Fatalf("incoming mutated: %+v", incoming)
+	}
+}
+
+func TestBatchMergeIssueDeltaKeepsEveryLegacyFingerprintOnce(t *testing.T) {
+	base := IssueDelta{Fingerprint: "fp", LegacyFingerprints: make([]string, 1, 4)}
+	base.LegacyFingerprints[0] = "offset-a"
+	incoming := IssueDelta{Fingerprint: "fp", LegacyFingerprints: []string{"offset-b", "offset-a"}}
+
+	merged := MergeIssueDelta(base, incoming)
+
+	if !slices.Equal(merged.LegacyFingerprints, []string{"offset-a", "offset-b"}) {
+		t.Fatalf("legacy fingerprints = %v, want both builds once, first seen first", merged.LegacyFingerprints)
+	}
+	if !slices.Equal(base.LegacyFingerprints, []string{"offset-a"}) || !slices.Equal(base.LegacyFingerprints[:2], []string{"offset-a", ""}) {
+		t.Fatalf("base mutated: %v", base.LegacyFingerprints[:2])
 	}
 }
 

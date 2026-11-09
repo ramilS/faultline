@@ -18,8 +18,10 @@ type Frame struct {
 	InApp    bool
 	// Package is the native image the frame ran in, and ImageOffset the frame's
 	// offset inside it. They identify a frame that has no module or function.
-	Package     string
-	ImageOffset *uint64
+	Package         string
+	ImageOffset     *uint64
+	InstructionAddr *uint64
+	Symbol          string
 }
 
 // Exception is the validated exception detail used for grouping.
@@ -41,6 +43,9 @@ type Result struct {
 	Fingerprint string
 	Title       string
 	Culprit     string
+	// LegacyFingerprint is the fingerprint without symbols, set only when it
+	// differs from Fingerprint.
+	LegacyFingerprint string
 }
 
 // Fingerprint derives a deterministic fingerprint, title, and culprit. Priority:
@@ -59,12 +64,11 @@ func Fingerprint(input GroupingInput) Result {
 	culprit := culpritFor(exception.Frames)
 
 	if frames := groupingFrames(exception.Frames); len(frames) > 0 {
-		parts := make([]string, 0, len(frames)+1)
-		parts = append(parts, exception.Type)
-		for _, frame := range frames {
-			parts = append(parts, frameKey(frame))
+		result := Result{Fingerprint: hashFrames(exception.Type, frames, frameKey), Title: title, Culprit: culprit}
+		if legacy := hashFrames(exception.Type, frames, unsymbolizedFrameKey); legacy != result.Fingerprint {
+			result.LegacyFingerprint = legacy
 		}
-		return Result{Fingerprint: hashParts(parts...), Title: title, Culprit: culprit}
+		return result
 	}
 
 	basis := exception.Value
@@ -78,23 +82,38 @@ func Fingerprint(input GroupingInput) Result {
 	}
 }
 
-func groupingFrames(frames []Frame) []Frame {
-	inApp := make([]Frame, 0, len(frames))
+func hashFrames(exceptionType string, frames []Frame, key func(Frame) string) string {
+	parts := make([]string, 0, len(frames)+1)
+	parts = append(parts, exceptionType)
 	for _, frame := range frames {
-		if frame.InApp {
-			inApp = append(inApp, frame)
+		parts = append(parts, key(frame))
+	}
+	return hashParts(parts...)
+}
+
+func groupingFrames(frames []Frame) []Frame {
+	indices := groupingFrameIndices(frames)
+	selected := make([]Frame, len(indices))
+	for position, index := range indices {
+		selected[position] = frames[index]
+	}
+	return selected
+}
+
+func groupingFrameIndices(frames []Frame) []int {
+	indices := make([]int, 0, min(len(frames), maxInAppFrames))
+	for index, frame := range frames {
+		if frame.InApp && len(indices) < maxInAppFrames {
+			indices = append(indices, index)
 		}
 	}
-	if len(inApp) > 0 {
-		if len(inApp) > maxInAppFrames {
-			inApp = inApp[:maxInAppFrames]
-		}
-		return inApp
+	if len(indices) > 0 {
+		return indices
 	}
-	if len(frames) > maxFallbackDepth {
-		return frames[:maxFallbackDepth]
+	for index := range min(len(frames), maxFallbackDepth) {
+		indices = append(indices, index)
 	}
-	return frames
+	return indices
 }
 
 func culpritFor(frames []Frame) string {

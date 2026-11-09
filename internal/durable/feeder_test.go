@@ -3,6 +3,8 @@ package durable
 import (
 	"context"
 	"errors"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -12,6 +14,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ramilS/faultline/internal/ingest"
+	"github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/pipeline"
 	"github.com/ramilS/faultline/internal/scrub"
 	"github.com/ramilS/faultline/internal/spill"
@@ -302,6 +305,56 @@ func TestFeederScrubsReplayedEventsBeforeTheyReachThePipeline(t *testing.T) {
 
 		if !strings.Contains(string(item.Row.Payload), `"password":"[Filtered]"`) || strings.Contains(string(item.Row.Payload), "hunter2") {
 			t.Fatalf("payload = %s, want the password redacted", item.Row.Payload)
+		}
+	})
+}
+
+// Durable mode never dispatches from the handler, so replay is where a native
+// crash's frames must be named for grouping.
+func TestFeederNamesNativeFramesOfReplayedEvents(t *testing.T) {
+	raw, err := os.ReadFile(filepath.Join("..", "ingest", "testdata", "cocoa", "build-a.envelope"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	synctest.Test(t, func(t *testing.T) {
+		dir := t.TempDir()
+		opts := spill.Options{Dir: dir, SegmentBytes: 1 << 20, SegmentMaxAge: time.Hour, FsyncInterval: time.Hour, MaxBytes: 1 << 30}
+		first, err := spill.Open(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := first.Append(spill.Record{ProjectID: 9, ReceivedAt: time.Unix(0, 1).UTC(), Payload: raw}); err != nil {
+			t.Fatal(err)
+		}
+		if err := first.Close(); err != nil {
+			t.Fatal(err)
+		}
+		store, err := spill.Open(opts)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer store.Close()
+
+		var item pipeline.Item
+		var lookedUp []uint64
+		feeder := New(Config{
+			Store: store, Dedup: ingest.NewDeduplicator(),
+			Dispatch:      func(_ string, _ int64, dispatched pipeline.Item) { item = dispatched },
+			DispatchSpans: func(int64, []storage.SpanRow) {},
+			Flush:         func(context.Context) error { return nil },
+			ReportError:   func(err error) { t.Errorf("reported %v", err) },
+			Symbols: func(_ context.Context, _ int64, _ []native.Image, addresses []uint64) ([]string, error) {
+				lookedUp = addresses
+				return []string{"submit_order", "checkout", "main"}, nil
+			},
+		})
+		ctx, cancel := context.WithCancel(t.Context())
+		defer cancel()
+		go feeder.Run(ctx)
+		synctest.Wait()
+
+		if len(lookedUp) != 3 || item.LegacyFingerprint == "" || item.Culprit != "submit_order" {
+			t.Fatalf("looked up %v, item culprit %q legacy %q: want the replayed crash keyed by function", lookedUp, item.Culprit, item.LegacyFingerprint)
 		}
 	})
 }

@@ -74,6 +74,10 @@ type IssueDelta struct {
 	LastSeen    time.Time
 	Tags        []TagDelta
 	Users       []UserDelta
+	// LegacyFingerprints are the events' distinct fingerprints without native
+	// symbols; an issue one of them created takes the events when no issue has
+	// Fingerprint.
+	LegacyFingerprints []string
 }
 
 // Batch is one shard's flush for a single project: releases to register,
@@ -89,7 +93,8 @@ type Batch struct {
 // MergeIssueDelta folds incoming into base and returns a new IssueDelta,
 // mutating neither input. Counts add, FirstSeen keeps the earliest and
 // LastSeen the latest, tag facets accumulate per (key, value), and user
-// identities accumulate per (key, value) the same way.
+// identities accumulate per (key, value) the same way, and legacy fingerprints
+// keep first-seen order without repeats.
 func MergeIssueDelta(base, incoming IssueDelta) IssueDelta {
 	merged := base
 	merged.Count = base.Count + incoming.Count
@@ -97,6 +102,12 @@ func MergeIssueDelta(base, incoming IssueDelta) IssueDelta {
 	merged.LastSeen = latest(base.LastSeen, incoming.LastSeen)
 	merged.Tags = mergeTagDeltas(base.Tags, incoming.Tags)
 	merged.Users = mergeUserDeltas(base.Users, incoming.Users)
+	merged.LegacyFingerprints = slices.Clone(base.LegacyFingerprints)
+	for _, legacy := range incoming.LegacyFingerprints {
+		if !slices.Contains(merged.LegacyFingerprints, legacy) {
+			merged.LegacyFingerprints = append(merged.LegacyFingerprints, legacy)
+		}
+	}
 	return merged
 }
 

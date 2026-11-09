@@ -27,6 +27,7 @@ type Config struct {
 	// since ServeSentry's spill branch never calls DispatchEnvelope itself.
 	// See ingest.SettingsLookup.
 	Settings ingest.SettingsLookup
+	Symbols  ingest.NativeSymbolLookup
 }
 
 // Feeder consumes sealed spill segments, dispatches their envelopes into the
@@ -85,7 +86,7 @@ func (f *Feeder) processSegment(ctx context.Context, segment spill.Segment) erro
 			f.cfg.ReportError(fmt.Errorf("spill record unmappable, dropped: %w", err))
 			return nil
 		}
-		ingest.DispatchEnvelope(ctx, parsed, rec.ProjectID, rec.ReceivedAt, f.cfg.Dedup, f.cfg.Rules, f.cfg.Settings, f.cfg.Dispatch, f.cfg.DispatchSpans, f.cfg.ReportError)
+		ingest.DispatchEnvelope(ctx, parsed, rec.ProjectID, rec.ReceivedAt, f.cfg.Dedup, f.cfg.Rules, f.cfg.Settings, f.cfg.Symbols, f.cfg.Dispatch, f.cfg.DispatchSpans, f.cfg.ReportError)
 		return nil
 	})
 	if readErr != nil {

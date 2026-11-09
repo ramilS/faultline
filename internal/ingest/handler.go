@@ -35,6 +35,7 @@ type Handler struct {
 	durable       bool
 	rules         RuleLookup
 	settings      SettingsLookup
+	symbols       NativeSymbolLookup
 }
 
 // Spiller durably appends an accepted envelope before the response. spill.Store
@@ -62,6 +63,9 @@ type HandlerOptions struct {
 	// field's call site in command wiring for why the durable branch omits
 	// it, mirroring Rules.
 	Settings SettingsLookup
+	// Symbols names native grouping frames; like Rules, only read on the
+	// non-durable dispatch path.
+	Symbols NativeSymbolLookup
 }
 
 func NewHandler(store KeyStore, now Clock, reportError func(error), dispatch Dispatcher, dispatchSpans SpanDispatcher) *Handler {
@@ -103,5 +107,6 @@ func NewHandlerWithOptions(opts HandlerOptions) *Handler {
 		durable:       opts.Durable,
 		rules:         opts.Rules,
 		settings:      opts.Settings,
+		symbols:       opts.Symbols,
 	}
 }

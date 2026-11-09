@@ -124,14 +124,23 @@ func isHexRune(r rune) bool {
 }
 
 // frameKey is the string a frame contributes to the fingerprint and the
-// culprit. A frame with a module or function is keyed on those; only a frame
-// with neither, such as an unsymbolicated native frame, falls back to its
-// image and the offset inside it.
+// culprit. A frame with a module or function is keyed on those; a native frame
+// with neither on the function its debug files name, without file, line or
+// offset, which move between builds; and only a frame nothing names falls back
+// to its image and the offset inside it.
 func frameKey(frame Frame) string {
 	if key := normalizeFrame(frame.Module, frame.Function); key != "" {
 		return key
 	}
+	if key := normalizeFunction(frame.Symbol); key != "" {
+		return key
+	}
 	return nativeFrameKey(frame.Package, frame.ImageOffset)
+}
+
+func unsymbolizedFrameKey(frame Frame) string {
+	frame.Symbol = ""
+	return frameKey(frame)
 }
 
 // nativeFrameKey names a native frame by the image's base name and its offset

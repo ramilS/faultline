@@ -190,16 +190,14 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 	groupingRuleService := grouping.NewRuleService(database.GroupingRules)
 	groupService := group.NewService(database.Groups)
 
-	symbolicationResolver := reportingResolver{
-		resolver: nativedebug.NewResolver(
-			database.NativeDebug,
-			proguard.NewResolver(
-				database.Proguard,
-				sourcemap.NewResolver(database.SourceMaps, sourcemap.NewParsedMapCache(parsedMapCacheBudget)),
-			),
+	nativeResolver := nativedebug.NewResolver(
+		database.NativeDebug,
+		proguard.NewResolver(
+			database.Proguard,
+			sourcemap.NewResolver(database.SourceMaps, sourcemap.NewParsedMapCache(parsedMapCacheBudget)),
 		),
-		report: reportPersistenceError,
-	}
+	)
+	symbolicationResolver := reportingResolver{resolver: nativeResolver, report: reportPersistenceError}
 	issueService := issue.NewService(database.Issues, symbolicationResolver)
 	reportIngestError := func(err error) {
 		fmt.Fprintf(stderr, "faultline: ingestion: %v\n", err)
@@ -235,6 +233,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 			ReportError:   reportPersistenceError,
 			Rules:         database.GroupingRuleCache.Get,
 			Settings:      database.settingsLookup(),
+			Symbols:       nativeResolver.FunctionNames,
 		})
 		feederCtx, stopFeeder := context.WithCancel(context.Background())
 		feederDone := make(chan struct{})
@@ -267,10 +266,10 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 			}
 		}()
 
-		// No Rules or Settings here: Durable: true makes ServeSentry take its
+		// No Rules, Settings or Symbols here: Durable: true makes ServeSentry take its
 		// spill branch, which never calls DispatchEnvelope — so a lookup set on
 		// this handler would never be read. The feeder wired above (with its
-		// own Rules and Settings) is what applies grouping rules, the
+		// own Rules, Settings and Symbols) is what applies grouping rules, the
 		// ip-identity gate and data scrubbing in durable mode, once envelopes are replayed out of
 		// the spill log.
 		envelopeHandler = ingest.NewHandlerWithOptions(ingest.HandlerOptions{
@@ -302,6 +301,7 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 			DispatchSpans: persistence.DispatchSpans,
 			Rules:         database.GroupingRuleCache.Get,
 			Settings:      database.settingsLookup(),
+			Symbols:       nativeResolver.FunctionNames,
 		})
 	}
 

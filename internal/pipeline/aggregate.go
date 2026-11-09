@@ -129,16 +129,21 @@ const (
 
 func issueDeltaFor(entry Item) storage.IssueDelta {
 	when := entry.Row.Timestamp
+	var legacy []string
+	if entry.LegacyFingerprint != "" {
+		legacy = []string{entry.LegacyFingerprint}
+	}
 	return storage.IssueDelta{
-		Fingerprint: entry.Row.Fingerprint,
-		Title:       entry.Title,
-		Culprit:     entry.Culprit,
-		Level:       entry.Row.Level,
-		Count:       1,
-		FirstSeen:   when,
-		LastSeen:    when,
-		Tags:        tagDeltasFor(entry.Tags, entry.Row.Environment, entry.Row.Release, when),
-		Users:       userDeltaFor(entry.User, when),
+		Fingerprint:        entry.Row.Fingerprint,
+		Title:              entry.Title,
+		Culprit:            entry.Culprit,
+		Level:              entry.Row.Level,
+		Count:              1,
+		FirstSeen:          when,
+		LastSeen:           when,
+		Tags:               tagDeltasFor(entry.Tags, entry.Row.Environment, entry.Row.Release, when),
+		Users:              userDeltaFor(entry.User, when),
+		LegacyFingerprints: legacy,
 	}
 }
 

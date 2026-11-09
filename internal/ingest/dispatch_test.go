@@ -25,7 +25,7 @@ func TestDispatchEnvelopeDedupsAndDispatches(t *testing.T) {
 	}}
 
 	var dispatched int
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, nil,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, nil, nil,
 		func(string, int64, pipeline.Item) { dispatched++ },
 		func(int64, []storage.SpanRow) {}, func(error) {})
 
@@ -46,7 +46,7 @@ func TestDispatchEnvelopeAppliesMatchingTextRule(t *testing.T) {
 
 	var hint string
 	var item pipeline.Item
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil, nil,
 		func(fingerprintHint string, _ int64, dispatched pipeline.Item) {
 			hint = fingerprintHint
 			item = dispatched
@@ -86,7 +86,7 @@ func TestDispatchEnvelopeMatchesRawCaseNotNormalizedMessage(t *testing.T) {
 	want := grouping.EvaluateRules([]grouping.Rule{rule}, event.groupingRuleInput(), deterministic)
 
 	var hint string
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil, nil,
 		func(fingerprintHint string, _ int64, _ pipeline.Item) { hint = fingerprintHint },
 		func(int64, []storage.SpanRow) {}, func(error) {})
 
@@ -118,7 +118,7 @@ func TestDispatchEnvelopeReportsRuleLookupErrorOncePerEnvelope(t *testing.T) {
 
 	var reported, dispatched int
 	hints := make([]string, 0, len(events))
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil, nil,
 		func(fingerprintHint string, _ int64, _ pipeline.Item) {
 			hints = append(hints, fingerprintHint)
 			dispatched++
@@ -161,7 +161,7 @@ func TestDispatchEnvelopeLooksUpRulesOncePerEnvelope(t *testing.T) {
 		return nil, nil
 	}
 
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, lookup, nil, nil,
 		func(string, int64, pipeline.Item) { dispatched++ },
 		func(int64, []storage.SpanRow) {}, func(error) {})
 
@@ -195,7 +195,7 @@ func TestDispatchEnvelopeGatesIPIdentityBySettingsLookup(t *testing.T) {
 			}}
 
 			var item pipeline.Item
-			DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, testCase.settings,
+			DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, testCase.settings, nil,
 				func(_ string, _ int64, dispatched pipeline.Item) { item = dispatched },
 				func(int64, []storage.SpanRow) {}, func(error) {})
 
@@ -232,7 +232,7 @@ func TestDispatchEnvelopeFailsClosedAndReportsOnceWhenSettingsLookupErrors(t *te
 
 	var reported int
 	var items []pipeline.Item
-	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, failingLookup,
+	DispatchEnvelope(t.Context(), env, 5, time.Unix(0, 0).UTC(), dedup, nil, failingLookup, nil,
 		func(_ string, _ int64, dispatched pipeline.Item) { items = append(items, dispatched) },
 		func(int64, []storage.SpanRow) {},
 		func(error) { reported++ })
@@ -258,7 +258,7 @@ func dispatchWithSettings(t *testing.T, event Event, settings SettingsLookup) (s
 	var fingerprint string
 	var item pipeline.Item
 	reported := 0
-	DispatchEnvelope(t.Context(), Envelope{Events: []Event{event}}, 5, time.Unix(0, 0).UTC(), NewDeduplicator(), nil, settings,
+	DispatchEnvelope(t.Context(), Envelope{Events: []Event{event}}, 5, time.Unix(0, 0).UTC(), NewDeduplicator(), nil, settings, nil,
 		func(dispatchedFingerprint string, _ int64, dispatched pipeline.Item) {
 			fingerprint, item = dispatchedFingerprint, dispatched
 		},
@@ -389,7 +389,7 @@ func TestDispatchEnvelopeScrubsSpanNamesAndAttributes(t *testing.T) {
 	} {
 		t.Run(name, func(t *testing.T) {
 			var rows []storage.SpanRow
-			DispatchEnvelope(t.Context(), Envelope{Spans: []Span{span}}, 5, time.Unix(0, 0).UTC(), NewDeduplicator(), nil, fixedSettings(testCase.settings),
+			DispatchEnvelope(t.Context(), Envelope{Spans: []Span{span}}, 5, time.Unix(0, 0).UTC(), NewDeduplicator(), nil, fixedSettings(testCase.settings), nil,
 				func(string, int64, pipeline.Item) {},
 				func(_ int64, dispatched []storage.SpanRow) { rows = dispatched }, func(error) {})
 

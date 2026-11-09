@@ -8,11 +8,13 @@ import "github.com/ramilS/faultline/internal/storage"
 // carries its computed fingerprint; Title, Culprit, and Tags feed the issue and
 // tag-facet deltas, and Release (when non-empty) is registered for the project.
 type Item struct {
-	Row     storage.EventRow
-	Title   string
-	Culprit string
-	Tags    map[string]string
-	Release string
+	Row storage.EventRow
+	// LegacyFingerprint is grouping.Result.LegacyFingerprint after the rules.
+	LegacyFingerprint string
+	Title             string
+	Culprit           string
+	Tags              map[string]string
+	Release           string
 	// User is the event's identity contribution to its issue's distinct-user
 	// count, already reduced to one key/value pair by the ingest package. It
 	// is nil when the event carried no identity, or when the identity was an

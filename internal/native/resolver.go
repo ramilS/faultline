@@ -50,15 +50,15 @@ type objectCache struct {
 	bytes int64
 }
 
-type resolver struct {
+type Resolver struct {
 	repo     Repository
 	fallback sourcemap.Resolver
 	cache    objectCache
 	used     *usage.Throttle
 }
 
-func NewResolver(repo Repository, fallback sourcemap.Resolver) sourcemap.Resolver {
-	return &resolver{repo: repo, fallback: fallback, cache: objectCache{m: make(map[string]*parsedObject)}, used: usage.NewThrottle(usage.Interval, time.Now)}
+func NewResolver(repo Repository, fallback sourcemap.Resolver) *Resolver {
+	return &Resolver{repo: repo, fallback: fallback, cache: objectCache{m: make(map[string]*parsedObject)}, used: usage.NewThrottle(usage.Interval, time.Now)}
 }
 
 type payloadFrame struct {
@@ -91,15 +91,19 @@ type address struct {
 }
 
 func (a *address) UnmarshalJSON(raw []byte) error {
+	a.value, a.valid = AddressFromJSON(raw)
+	return nil
+}
+
+func AddressFromJSON(raw []byte) (uint64, bool) {
 	text := strings.TrimSpace(string(raw))
 	if len(text) >= 2 && text[0] == '"' && text[len(text)-1] == '"' {
 		text = text[1 : len(text)-1]
 	}
-	a.value, a.valid = parseAddress(text)
-	return nil
+	return parseAddress(text)
 }
 
-func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourcemap.Exception, error) {
+func (r *Resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourcemap.Exception, error) {
 	var payload struct {
 		Exception *sourcemap.ExceptionValues[payloadException] `json:"exception"`
 		DebugMeta struct {
@@ -155,8 +159,7 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 					exception.Frames = append(exception.Frames, frame)
 					continue
 				}
-				pc := address - image.Base + object.vmaddr
-				if original, ok := resolvePC(object, pc, source.InApp); ok {
+				if original, ok := resolvePC(object, image.pc(address, object), source.InApp); ok {
 					frame.Original = original
 					resolvedAny = true
 				}
@@ -172,16 +175,64 @@ func (r *resolver) Resolve(ctx context.Context, in sourcemap.EventInput) (*sourc
 	return head, firstFailure
 }
 
-type imageRange struct {
+type Image struct {
 	DebugID   string
 	Base, End uint64
 }
 
-func validImages(input []debugImage) []imageRange {
+func (image Image) pc(address uint64, object *parsedObject) uint64 {
+	return address - image.Base + object.vmaddr
+}
+
+func ImagesFromDebugMeta(raw []byte) []Image {
+	var meta struct {
+		Images []debugImage `json:"images"`
+	}
+	if json.Unmarshal(raw, &meta) != nil {
+		return nil
+	}
+	return validImages(meta.Images)
+}
+
+func (r *Resolver) FunctionNames(ctx context.Context, projectID int64, images []Image, addresses []uint64) ([]string, error) {
+	names := make([]string, len(addresses))
+	if r.repo == nil {
+		return names, nil
+	}
+	var failures []error
+	looked := make(map[string]imageLookup)
+	for index, address := range addresses {
+		image, ok := imageFor(images, address)
+		if !ok {
+			continue
+		}
+		object, first, err := r.objectFor(ctx, projectID, image.DebugID, looked)
+		if err == nil && first {
+			if err := r.recordUse(ctx, projectID, image.DebugID); err != nil {
+				failures = append(failures, err)
+			}
+		}
+		if errors.Is(err, ErrNotFound) {
+			continue
+		}
+		if err != nil {
+			if first {
+				failures = append(failures, err)
+			}
+			continue
+		}
+		if function := functionAt(object, image.pc(address, object)); function != nil {
+			names[index] = function.name
+		}
+	}
+	return names, errors.Join(failures...)
+}
+
+func validImages(input []debugImage) []Image {
 	if len(input) > maxImagesPerEvent {
 		input = input[:maxImagesPerEvent]
 	}
-	result := make([]imageRange, 0, len(input))
+	result := make([]Image, 0, len(input))
 	for _, image := range input {
 		if image.Type != "macho" && image.Type != "apple" {
 			continue
@@ -198,7 +249,7 @@ func validImages(input []debugImage) []imageRange {
 		if !ok || size == 0 || base > ^uint64(0)-size {
 			continue
 		}
-		result = append(result, imageRange{DebugID: parsed.String(), Base: base, End: base + size})
+		result = append(result, Image{DebugID: parsed.String(), Base: base, End: base + size})
 	}
 	return result
 }
@@ -212,19 +263,19 @@ func parseAddress(value string) (uint64, bool) {
 	return n, err == nil
 }
 
-func imageFor(images []imageRange, address uint64) (imageRange, bool) {
+func imageFor(images []Image, address uint64) (Image, bool) {
 	for _, image := range images {
 		if address >= image.Base && address < image.End {
 			return image, true
 		}
 	}
-	return imageRange{}, false
+	return Image{}, false
 }
 
 // objectFor resolves an image once per event; looked holds what earlier frames
 // of the same event already found. first reports that this call did the
 // lookup, so the caller records the use once per event.
-func (r *resolver) objectFor(ctx context.Context, projectID int64, debugID string, looked map[string]imageLookup) (object *parsedObject, first bool, err error) {
+func (r *Resolver) objectFor(ctx context.Context, projectID int64, debugID string, looked map[string]imageLookup) (object *parsedObject, first bool, err error) {
 	if found, ok := looked[debugID]; ok {
 		return found.object, false, found.err
 	}
@@ -236,7 +287,7 @@ func (r *resolver) objectFor(ctx context.Context, projectID int64, debugID strin
 // recordUse tells the repository about a use at most once per usage.Interval,
 // so retention keeps debug files that crashes still need; a failed write is
 // reported and retried on the next use.
-func (r *resolver) recordUse(ctx context.Context, projectID int64, debugID string) error {
+func (r *Resolver) recordUse(ctx context.Context, projectID int64, debugID string) error {
 	key := fmt.Sprintf("%d/%s", projectID, debugID)
 	if !r.used.Due(key) {
 		return nil
@@ -252,7 +303,7 @@ func (r *resolver) recordUse(ctx context.Context, projectID int64, debugID strin
 // compressed debug file. A debug id's content is immutable once stored (Put
 // refuses different bytes under it), so the project and debug id are a sound
 // cache key.
-func (r *resolver) lookup(ctx context.Context, projectID int64, debugID string) (*parsedObject, error) {
+func (r *Resolver) lookup(ctx context.Context, projectID int64, debugID string) (*parsedObject, error) {
 	key := fmt.Sprintf("%d/%s", projectID, debugID)
 	r.cache.mu.Lock()
 	cached := r.cache.m[key]
@@ -274,7 +325,7 @@ func (r *resolver) lookup(ctx context.Context, projectID int64, debugID string) 
 	return object, nil
 }
 
-func (r *resolver) load(key string, stored Stored) (*parsedObject, error) {
+func (r *Resolver) load(key string, stored Stored) (*parsedObject, error) {
 	body, err := decompress(stored)
 	if err != nil {
 		return nil, err
@@ -335,7 +386,7 @@ func (r *resolver) load(key string, stored Stored) (*parsedObject, error) {
 	return parsed, nil
 }
 
-func resolvePC(object *parsedObject, pc uint64, inApp bool) (*sourcemap.Position, bool) {
+func functionAt(object *parsedObject, pc uint64) *functionRange {
 	var best *functionRange
 	for i := range object.funcs {
 		span := &object.funcs[i]
@@ -343,6 +394,11 @@ func resolvePC(object *parsedObject, pc uint64, inApp bool) (*sourcemap.Position
 			best = span
 		}
 	}
+	return best
+}
+
+func resolvePC(object *parsedObject, pc uint64, inApp bool) (*sourcemap.Position, bool) {
+	best := functionAt(object, pc)
 	if best == nil {
 		return nil, false
 	}

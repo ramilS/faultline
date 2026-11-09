@@ -12,6 +12,7 @@ import (
 	"github.com/google/uuid"
 
 	"github.com/ramilS/faultline/internal/grouping"
+	"github.com/ramilS/faultline/internal/native"
 	"github.com/ramilS/faultline/internal/sourcemap"
 )
 
@@ -30,6 +31,7 @@ type sentryEvent struct {
 	User        *sentryUser                               `json:"user"`
 	Exception   *sentryExceptionContainer                 `json:"exception"`
 	Threads     *sourcemap.ThreadValues[sentryStacktrace] `json:"threads"`
+	DebugMeta   json.RawMessage                           `json:"debug_meta"`
 	Contexts    struct {
 		Trace *struct {
 			TraceID string `json:"trace_id"`
@@ -121,6 +123,7 @@ func mapSentryEventInEnvelope(payload []byte, envelopeEventID string, receivedAt
 		Tags:        coerceSentryTags(raw.Tags),
 		User:        identity,
 		Exception:   exception,
+		DebugMeta:   raw.DebugMeta,
 		// bytes.Clone, not the parameter directly: payload aliases the envelope's
 		// whole decompressed buffer (see sentry_envelope.go's readItemPayload), and
 		// this field is retained on pipeline.Item past the request — an uncloned
@@ -276,6 +279,14 @@ func (f sentryFrame) imageOffset() *uint64 {
 	return &offset
 }
 
+func (f sentryFrame) instructionAddr() *uint64 {
+	address, ok := native.AddressFromJSON(f.InstructionAddr)
+	if !ok {
+		return nil
+	}
+	return &address
+}
+
 func parseFrameAddress(raw json.RawMessage) (uint64, bool) {
 	var text string
 	if err := json.Unmarshal(raw, &text); err != nil {
@@ -345,11 +356,12 @@ func groupingFramesFromSentry(frames []sentryFrame) []grouping.Frame {
 			module = frame.Filename
 		}
 		mapped = append(mapped, grouping.Frame{
-			Module:      module,
-			Function:    frame.Function,
-			InApp:       frame.InApp,
-			Package:     frame.Package,
-			ImageOffset: frame.imageOffset(),
+			Module:          module,
+			Function:        frame.Function,
+			InApp:           frame.InApp,
+			Package:         frame.Package,
+			ImageOffset:     frame.imageOffset(),
+			InstructionAddr: frame.instructionAddr(),
 		})
 	}
 	return mapped
