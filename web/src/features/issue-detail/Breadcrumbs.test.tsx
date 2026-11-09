@@ -62,9 +62,18 @@ describe("Breadcrumbs", () => {
     expect(screen.queryByRole("button", { name: /View all/ })).toBeNull();
   });
 
-  it("says so when the SDK sent no breadcrumbs", () => {
-    render(<Breadcrumbs event={eventWithCrumbs(0)} />);
+  it("says so in one line that keeps the section anchor when the SDK sent no breadcrumbs", () => {
+    const { container } = render(<Breadcrumbs event={eventWithCrumbs(0)} />);
 
-    expect(screen.getByText("No breadcrumbs")).toBeDefined();
+    const anchor = container.querySelector("#section-breadcrumbs");
+    expect(anchor?.tagName).toBe("P");
+    expect(anchor?.textContent).toMatch(/^No breadcrumbs on this event — enable breadcrumb collection in the SDK/);
+    expect(screen.queryByText("Breadcrumbs")).toBeNull();
+  });
+
+  it("keeps the section anchor on the card when there are breadcrumbs", () => {
+    const { container } = render(<Breadcrumbs event={eventWithCrumbs(2)} />);
+
+    expect(container.querySelector("#section-breadcrumbs")?.textContent).toContain("step 1");
   });
 });

@@ -30,13 +30,18 @@ function buildIssue(overrides: Partial<ListedIssue>): ListedIssue {
   };
 }
 
-function renderTable(issues: readonly ListedIssue[], projectNames: ReadonlyMap<string, string> | null) {
+function renderTable(
+  issues: readonly ListedIssue[],
+  projectNames: ReadonlyMap<string, string> | null,
+  showStatus = true
+) {
   return render(
     <MemoryRouter>
       <IssueTable
         issues={issues}
         projectNames={projectNames}
         selectedIds={new Set()}
+        showStatus={showStatus}
         windowLabel="24h"
         sort="last_seen"
         onSortChange={() => undefined}
@@ -136,5 +141,15 @@ describe("IssueTable", () => {
     expect(knownLink.className).toContain("font-normal");
     expect(knownLink.className).not.toContain("font-semibold");
     expect(knownRow.className).not.toMatch(/opacity|text-muted/);
+  });
+
+  it.each([
+    { showStatus: true, header: 1, badges: 2 },
+    { showStatus: false, header: 0, badges: 0 }
+  ])("with showStatus $showStatus renders $header status header and $badges badges per row", ({ showStatus, header, badges }) => {
+    renderTable([buildIssue({ status: "resolved" })], null, showStatus);
+
+    expect(screen.queryAllByRole("columnheader", { name: "Status" })).toHaveLength(header);
+    expect(screen.queryAllByText("Resolved")).toHaveLength(badges);
   });
 });

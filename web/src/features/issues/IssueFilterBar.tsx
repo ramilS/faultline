@@ -35,6 +35,10 @@ const STATUS_LABELS: Record<IssueStatus, string> = {
   ignored: "Ignored"
 };
 
+function statusFilterLabel(statuses: readonly IssueStatus[]): string {
+  return statuses.length === 1 ? STATUS_LABELS[statuses[0]] : `${statuses.length} selected`;
+}
+
 const LEVEL_LABELS: Record<IssueLevel, string> = {
   fatal: "Fatal",
   error: "Error",
@@ -117,7 +121,7 @@ export function IssueFilterBar({ slug, controls }: IssueFilterBarProps) {
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="outline" size="sm" className="h-8">
-                Status ({filters.statuses.length})
+                Status: {statusFilterLabel(filters.statuses)}
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start">
@@ -169,6 +173,7 @@ export function IssueFilterBar({ slug, controls }: IssueFilterBarProps) {
             onValueChange={(value) => controls.setAssigned(value === ASSIGNED_ANYONE ? "" : value)}
           >
             <SelectTrigger size="sm" aria-label="Filter by assignee" className="h-8">
+              <span className="text-muted-foreground">Assignee:</span>
               <SelectValue />
             </SelectTrigger>
             <SelectContent>

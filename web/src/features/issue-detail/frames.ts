@@ -90,13 +90,44 @@ function encodePath(path: string): string {
   return path.split("/").map(encodeURIComponent).join("/");
 }
 
-function repositoryPath(filename: string, setting: SourceLinkSetting): string {
-  const stackRoot = setting.source_stack_root.replace(/\/+$/, "");
+function stackRelativePath(filename: string, sourceStackRoot: string): string {
+  const stackRoot = sourceStackRoot.replace(/\/+$/, "");
   const underStackRoot = stackRoot !== "" && (filename === stackRoot || filename.startsWith(`${stackRoot}/`));
-  const relative = underStackRoot ? filename.slice(stackRoot.length) : filename;
+  return underStackRoot ? filename.slice(stackRoot.length).replace(/^\/+/, "") : filename;
+}
+
+function repositoryPath(filename: string, setting: SourceLinkSetting): string {
   const sourceRoot = setting.source_root.replace(/\/+$/, "");
-  const trimmed = relative.replace(/^\/+/, "");
+  const trimmed = stackRelativePath(filename, setting.source_stack_root).replace(/^\/+/, "");
   return sourceRoot === "" ? trimmed : `${sourceRoot}/${trimmed}`;
+}
+
+export interface SplitLocation {
+  readonly directory: string;
+  readonly file: string;
+}
+
+export function splitLocation(path: string): SplitLocation {
+  const cut = Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1;
+  return { directory: path.slice(0, cut), file: path.slice(cut) };
+}
+
+export interface FrameLocation extends SplitLocation {
+  readonly line: number;
+  readonly full: string;
+}
+
+export function frameLocation(frame: SymbolicatedFrame, sourceStackRoot: string): FrameLocation | null {
+  if (!hasSourceLocation(frame)) {
+    return null;
+  }
+  const position = frame.original ?? frame.generated;
+  const relative = stackRelativePath(position.filename, sourceStackRoot);
+  return {
+    ...splitLocation(relative === "" ? position.filename : relative),
+    line: position.line,
+    full: displayLocation(frame)
+  };
 }
 
 /**

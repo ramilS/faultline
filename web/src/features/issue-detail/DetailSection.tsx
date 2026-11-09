@@ -41,3 +41,11 @@ export function DetailSection({
     </Card>
   );
 }
+
+export function EmptySectionNote({ id, children }: { id?: string; children: ReactNode }) {
+  return (
+    <p id={id} className="text-muted-foreground px-1 text-xs" style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}>
+      {children}
+    </p>
+  );
+}

@@ -4,11 +4,13 @@ import { test } from "node:test";
 import type { SourceLinkSetting, SymbolicatedException, SymbolicatedFrame } from "../../api.ts";
 import {
   defaultExpandedFrame,
+  frameLocation,
   frameRows,
   hasSourceLocation,
   initialFrameFilter,
   isInAppFrame,
   sourceLink,
+  splitLocation,
   stackTraceText
 } from "./frames.ts";
 
@@ -301,3 +303,105 @@ for (const testCase of SOURCE_LINK_CASES) {
     assert.equal(sourceLink(testCase.frame, testCase.release, testCase.setting), testCase.expected);
   });
 }
+
+const SPLIT_LOCATION_CASES: ReadonlyArray<{ name: string; path: string; directory: string; file: string }> = [
+  { name: "Unix path", path: "/opt/app/src/cart.py", directory: "/opt/app/src/", file: "cart.py" },
+  { name: "Windows path", path: "C:\\build\\App\\Program.cs", directory: "C:\\build\\App\\", file: "Program.cs" },
+  {
+    name: "URL",
+    path: "https://cdn.example.com/static/js/app.min.js",
+    directory: "https://cdn.example.com/static/js/",
+    file: "app.min.js"
+  },
+  { name: "no directory", path: "app.js", directory: "", file: "app.js" },
+  { name: "empty", path: "", directory: "", file: "" }
+];
+
+for (const testCase of SPLIT_LOCATION_CASES) {
+  test(`splitLocation: ${testCase.name}`, () => {
+    assert.deepEqual(splitLocation(testCase.path), { directory: testCase.directory, file: testCase.file });
+  });
+}
+
+const PLAYBACK = "/Users/ramil/Documents/my/muslicast/research/android/app/src/main/java/playback/PlaybackController.kt";
+const FLOW_COLLECTOR = "/opt/buildAgent/work/b1c2/kotlinx/coroutines/flow/FlowCollector.kt";
+
+function locatedAt(filename: string, line: number, column: number): SymbolicatedFrame {
+  return { ...located(filename, line), generated: { function: "invoke", filename, line, column, in_app: true } };
+}
+
+const FRAME_LOCATION_CASES: ReadonlyArray<{
+  name: string;
+  frame: SymbolicatedFrame;
+  stackRoot: string;
+  expected: ReturnType<typeof frameLocation>;
+}> = [
+  {
+    name: "a long path leads with the file and line and keeps the column for the full location",
+    frame: locatedAt(PLAYBACK, 1029, 21),
+    stackRoot: "",
+    expected: {
+      directory: "/Users/ramil/Documents/my/muslicast/research/android/app/src/main/java/playback/",
+      file: "PlaybackController.kt",
+      line: 1029,
+      full: `${PLAYBACK}:1029:21`
+    }
+  },
+  {
+    name: "a frame under the stack root is shown relative to it",
+    frame: locatedAt(PLAYBACK, 1029, 21),
+    stackRoot: "/Users/ramil/Documents/my/muslicast/",
+    expected: {
+      directory: "research/android/app/src/main/java/playback/",
+      file: "PlaybackController.kt",
+      line: 1029,
+      full: `${PLAYBACK}:1029:21`
+    }
+  },
+  {
+    name: "a frame outside the stack root keeps its whole path",
+    frame: locatedAt(FLOW_COLLECTOR, 14, 0),
+    stackRoot: "/Users/ramil/Documents/my/muslicast/",
+    expected: {
+      directory: "/opt/buildAgent/work/b1c2/kotlinx/coroutines/flow/",
+      file: "FlowCollector.kt",
+      line: 14,
+      full: `${FLOW_COLLECTOR}:14`
+    }
+  },
+  {
+    name: "a frame with a function only has no location",
+    frame: located("", 0),
+    stackRoot: "/Users/ramil/Documents/my/muslicast/",
+    expected: null
+  },
+  {
+    name: "the original position wins over the generated one",
+    frame: located("https://cdn.example/assets/app.js", 1, true, { filename: "src/checkout.ts", line: 42 }),
+    stackRoot: "",
+    expected: { directory: "src/", file: "checkout.ts", line: 42, full: "src/checkout.ts:42:1" }
+  },
+  {
+    name: "a path equal to the stack root is shown whole rather than blank",
+    frame: locatedAt("/app", 3, 0),
+    stackRoot: "/app",
+    expected: { directory: "/", file: "app", line: 3, full: "/app:3" }
+  }
+];
+
+for (const testCase of FRAME_LOCATION_CASES) {
+  test(`frameLocation: ${testCase.name}`, () => {
+    assert.deepEqual(frameLocation(testCase.frame, testCase.stackRoot), testCase.expected);
+  });
+}
+
+test("the shown path under a stack root is the path the source link opens", () => {
+  const frame = locatedAt(PLAYBACK, 1029, 21);
+  const stackRoot = "/Users/ramil/Documents/my/muslicast";
+  const location = frameLocation(frame, stackRoot);
+
+  assert.equal(
+    sourceLink(frame, null, setting("https://git.example/{path}#L{line}", stackRoot)),
+    `https://git.example/${location?.directory}${location?.file}#L1029`
+  );
+});

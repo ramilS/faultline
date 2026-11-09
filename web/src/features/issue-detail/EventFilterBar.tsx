@@ -20,7 +20,7 @@ export function EventFilterBar({ environments, environment, onEnvironmentChange,
     // control alone still earns its place.
     return (
       <div className="flex items-center gap-2">
-        <TimeRangePicker value={timeRange} onChange={onTimeRangeChange} />
+        <TimeRangePicker subject="Events" value={timeRange} onChange={onTimeRangeChange} />
       </div>
     );
   }
@@ -40,7 +40,7 @@ export function EventFilterBar({ environments, environment, onEnvironmentChange,
           </option>
         ))}
       </select>
-      <TimeRangePicker value={timeRange} onChange={onTimeRangeChange} />
+      <TimeRangePicker subject="Events" value={timeRange} onChange={onTimeRangeChange} />
     </div>
   );
 }

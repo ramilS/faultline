@@ -21,7 +21,7 @@ describe("Frame collapsing", () => {
     const frame = frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"]);
     const { container, rerender } = render(
       <ul>
-        <Frame repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+        <Frame sourceStackRoot="" repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
       </ul>
     );
 
@@ -32,7 +32,7 @@ describe("Frame collapsing", () => {
 
     rerender(
       <ul>
-        <Frame repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
+        <Frame sourceStackRoot="" repositoryUrl={null} frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} />
       </ul>
     );
     expect(container.querySelector("pre")?.textContent).toContain("await run(a)");
@@ -41,7 +41,7 @@ describe("Frame collapsing", () => {
   it("offers nothing to open on a frame that carries no source", () => {
     render(
       <ul>
-        <Frame repositoryUrl={null} frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} />
+        <Frame sourceStackRoot="" repositoryUrl={null} frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} />
       </ul>
     );
 
@@ -51,7 +51,7 @@ describe("Frame collapsing", () => {
 
 describe("Frame source context", () => {
   it("sets keywords, strings and comments apart by weight and tone in a JavaScript file", () => {
-    render(<ul><Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
+    render(<ul><Frame sourceStackRoot="" repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ['return "done"; // finished'])} /></ul>);
 
     expect(screen.getByText("return").className).toContain("font-semibold");
     expect(screen.getByText("// finished").className).toContain("italic");
@@ -60,7 +60,7 @@ describe("Frame source context", () => {
   it("shows every line's text exactly as sent, whatever the highlighting", () => {
     const { container } = render(
       <ul>
-        <Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
+        <Frame sourceStackRoot="" repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/charge.ts", ["const a = 1;", "  await run(a)"])} />
       </ul>
     );
 
@@ -69,7 +69,7 @@ describe("Frame source context", () => {
   });
 
   it("leaves a Java frame plain rather than colouring it by JavaScript's rules", () => {
-    render(<ul><Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
+    render(<ul><Frame sourceStackRoot="" repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("Exporter.java", ["return value; // finished"])} /></ul>);
 
     expect(screen.getByText("return value; // finished").className).not.toContain("italic");
   });
@@ -77,7 +77,7 @@ describe("Frame source context", () => {
   it("keeps markup in source as text", () => {
     const { container } = render(
       <ul>
-        <Frame repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
+        <Frame sourceStackRoot="" repositoryUrl={null} expanded onToggle={() => {}} frame={frameIn("src/x.ts", ['const x = "<img src=x onerror=alert(1)>";'])} />
       </ul>
     );
 
@@ -108,7 +108,7 @@ describe("Frame local variables", () => {
     const frame = frameWithVars({ user_id: 42, password: "[Filtered]", items: [1, 2, 3] });
     const { rerender } = render(
       <ul>
-        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} repositoryUrl={null} />
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
     expect(screen.queryByText("user_id")).toBeNull();
@@ -116,7 +116,7 @@ describe("Frame local variables", () => {
     fireEvent.click(screen.getByRole("button", { expanded: false }));
     rerender(
       <ul>
-        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} repositoryUrl={null} />
+        <Frame frame={frame} expanded={expanded} onToggle={() => (expanded = !expanded)} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
 
@@ -129,7 +129,7 @@ describe("Frame local variables", () => {
   it("keeps a nested value collapsed until it is opened", () => {
     render(
       <ul>
-        <Frame frame={frameWithVars({ cart: { sku: "A-1", qty: 2 } })} expanded onToggle={() => {}} repositoryUrl={null} />
+        <Frame frame={frameWithVars({ cart: { sku: "A-1", qty: 2 } })} expanded onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
     expect(screen.queryByText("sku")).toBeNull();
@@ -143,7 +143,7 @@ describe("Frame local variables", () => {
   it("cuts a huge value and says it was truncated", () => {
     const { container } = render(
       <ul>
-        <Frame frame={frameWithVars({ blob: "x".repeat(1 << 20) })} expanded onToggle={() => {}} repositoryUrl={null} />
+        <Frame frame={frameWithVars({ blob: "x".repeat(1 << 20) })} expanded onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
 
@@ -154,7 +154,7 @@ describe("Frame local variables", () => {
   it("shows markup in a value as text", () => {
     const { container } = render(
       <ul>
-        <Frame frame={frameWithVars({ name: "<img src=x onerror=alert(1)>" })} expanded onToggle={() => {}} repositoryUrl={null} />
+        <Frame frame={frameWithVars({ name: "<img src=x onerror=alert(1)>" })} expanded onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
 
@@ -165,7 +165,7 @@ describe("Frame local variables", () => {
   it("shows no variables section for a frame that sent none", () => {
     render(
       <ul>
-        <Frame expanded onToggle={() => {}} repositoryUrl={null} frame={frameIn("src/charge.ts", ["run()"])} />
+        <Frame expanded onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} frame={frameIn("src/charge.ts", ["run()"])} />
       </ul>
     );
 
@@ -181,6 +181,7 @@ describe("Frame repository link", () => {
           frame={frameIn("src/shop/cart.py", [])}
           expanded={false}
           onToggle={() => {}}
+          sourceStackRoot=""
           repositoryUrl="https://github.com/acme/shop/blob/main/src/shop/cart.py#L88"
         />
       </ul>
@@ -195,11 +196,54 @@ describe("Frame repository link", () => {
   it("renders no link or empty button when there is no repository URL", () => {
     render(
       <ul>
-        <Frame frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} repositoryUrl={null} />
+        <Frame frame={frameIn("src/charge.ts", [])} expanded={false} onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} />
       </ul>
     );
 
     expect(screen.queryByRole("link")).toBeNull();
     expect(screen.queryByRole("button")).toBeNull();
+  });
+});
+
+describe("Frame location", () => {
+  const path = "/Users/ramil/Documents/my/muslicast/research/playback/PlaybackController.kt";
+
+  function renderAt(sourceStackRoot: string) {
+    const frame = { ...frameIn(path, []), generated: { filename: path, line: 1029, column: 21, function: "play", in_app: true } };
+    return render(
+      <ul>
+        <Frame frame={frame as SymbolicatedFrame} expanded={false} onToggle={() => {}} sourceStackRoot={sourceStackRoot} repositoryUrl={null} />
+      </ul>
+    );
+  }
+
+  it("leads with the file and line and keeps the whole location in the tooltip", () => {
+    renderAt("");
+
+    const file = screen.getByText("PlaybackController.kt:1029");
+    expect(file.className).toContain("whitespace-nowrap");
+    expect(file.parentElement?.getAttribute("title")).toBe(`${path}:1029:21`);
+    expect(file.parentElement?.textContent).toBe(
+      "PlaybackController.kt:1029/Users/ramil/Documents/my/muslicast/research/playback/"
+    );
+  });
+
+  it("shows the directory relative to the stack root", () => {
+    renderAt("/Users/ramil/Documents/my/muslicast/");
+
+    expect(screen.getByText("PlaybackController.kt:1029").parentElement?.textContent).toBe(
+      "PlaybackController.kt:1029research/playback/"
+    );
+  });
+
+  it("shows no location for a frame without a file", () => {
+    const { container } = render(
+      <ul>
+        <Frame frame={frameIn("", [])} expanded={false} onToggle={() => {}} sourceStackRoot="" repositoryUrl={null} />
+      </ul>
+    );
+
+    expect(container.querySelector("[title]")).toBeNull();
+    expect(container.textContent).toBe("run");
   });
 });

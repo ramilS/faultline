@@ -30,7 +30,7 @@ vi.mock("@/apiClient", () => ({
 import { api } from "@/apiClient";
 import { copyToClipboard } from "@/lib/clipboard";
 
-import type { IssueDetail, IssueSummary } from "@/api";
+import type { IssueDetail, IssueStatus, IssueSummary } from "@/api";
 
 import { IssueActions } from "./IssueActions";
 
@@ -144,5 +144,21 @@ describe("IssueActions ignore menu", () => {
     );
 
     expect(screen.getByRole("button", { name: "Ignore" })).toHaveProperty("disabled", false);
+  });
+});
+
+describe("IssueActions status buttons", () => {
+  it.each<{ status: IssueStatus; shown: string[] }>([
+    { status: "unresolved", shown: ["Resolve", "Ignore"] },
+    { status: "resolved", shown: ["Ignore", "Reopen"] },
+    { status: "ignored", shown: ["Resolve", "Ignore", "Reopen"] }
+  ])("offers $shown on a $status issue", ({ status, shown }) => {
+    render(<IssueActions issue={buildIssue({ status })} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+
+    const offered = screen
+      .getAllByRole("button")
+      .filter((button) => ["Resolve", "Ignore", "Reopen"].includes(button.textContent ?? ""));
+    expect(offered.map((button) => button.textContent)).toEqual(shown);
+    expect(offered.every((button) => !(button as HTMLButtonElement).disabled)).toBe(true);
   });
 });

@@ -17,10 +17,11 @@ export interface IssueRowProps {
   /** Set only when the list spans projects; renders the project column. */
   projectName?: string;
   selected: boolean;
+  showStatus: boolean;
   onSelectedChange: (selected: boolean) => void;
 }
 
-export function IssueRow({ issue, projectName, selected, onSelectedChange }: IssueRowProps) {
+export function IssueRow({ issue, projectName, selected, showStatus, onSelectedChange }: IssueRowProps) {
   const navigate = useNavigate();
   const to = `/${issue.project_slug}/issues/${issue.id}`;
 
@@ -80,7 +81,7 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
             usable width; the same information moves under it rather than away. */}
         <span className="mt-1 flex items-center gap-1.5 sm:hidden">
           <LevelBadge level={issue.level} />
-          <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />
+          {showStatus && <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />}
         </span>
         {projectName !== undefined && (
           <span className="text-muted-foreground mt-1 block truncate text-xs md:hidden">{projectName}</span>
@@ -105,11 +106,13 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
 
       <TableCell className="w-20 text-right text-sm max-md:hidden">{issue.users_seen.toLocaleString()}</TableCell>
 
-      <TableCell className="text-muted-foreground w-20 text-right text-sm max-sm:pr-4">
+      <TableCell
+        className={cn("text-muted-foreground w-20 text-right text-sm max-sm:pr-4", !showStatus && "sm:max-lg:pr-6")}
+      >
         <RelativeTime iso={issue.last_seen} />
       </TableCell>
 
-      <TableCell className="w-36 max-lg:hidden">
+      <TableCell className={cn("w-36 max-lg:hidden", !showStatus && "pr-6")}>
         {issue.assignee === null ? (
           <>
             <span className="text-muted-foreground" aria-hidden="true">
@@ -124,9 +127,11 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
         )}
       </TableCell>
 
-      <TableCell className="w-28 pr-6 max-sm:hidden">
-        <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />
-      </TableCell>
+      {showStatus && (
+        <TableCell className="w-28 pr-6 max-sm:hidden">
+          <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />
+        </TableCell>
+      )}
     </TableRow>
   );
 }

@@ -1,8 +1,7 @@
-import { ChevronRight, Footprints } from "lucide-react";
+import { ChevronRight } from "lucide-react";
 import { useMemo, useState } from "react";
 
 import type { EventDetail } from "@/api";
-import { EmptyState } from "@/components/EmptyState";
 import { JsonTree } from "@/components/JsonTree";
 import { LevelBadge } from "@/components/LevelBadge";
 import { Button } from "@/components/ui/button";
@@ -11,7 +10,7 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 
 import { buildBreadcrumbRows, filterBreadcrumbRows, offsetFromEvent, type BreadcrumbRow } from "./breadcrumbRows";
-import { DetailSection } from "./DetailSection";
+import { DetailSection, EmptySectionNote } from "./DetailSection";
 import { readBreadcrumbs } from "./payloadReaders";
 
 interface BreadcrumbsProps {
@@ -25,6 +24,8 @@ interface BreadcrumbsProps {
  * panels below it.
  */
 const PREVIEW_ROWS = 5;
+
+const BREADCRUMBS_SECTION_ID = "section-breadcrumbs";
 
 /**
  * What the user was doing before the error, oldest first, ending with the
@@ -47,9 +48,18 @@ export function Breadcrumbs({ event }: BreadcrumbsProps) {
   const crumbCount = rows.length - 1;
   const preview = rows.slice(-PREVIEW_ROWS);
 
+  if (crumbCount === 0) {
+    return (
+      <EmptySectionNote id={BREADCRUMBS_SECTION_ID}>
+        No breadcrumbs on this event — enable breadcrumb collection in the SDK, or this event predates the SDK version that
+        started sending them.
+      </EmptySectionNote>
+    );
+  }
+
   return (
     <DetailSection
-      id="section-breadcrumbs"
+      id={BREADCRUMBS_SECTION_ID}
       title="Breadcrumbs"
       action={
         rows.length > PREVIEW_ROWS ? (
@@ -59,16 +69,7 @@ export function Breadcrumbs({ event }: BreadcrumbsProps) {
         ) : undefined
       }
     >
-      {crumbCount === 0 ? (
-        <EmptyState
-          className="py-8"
-          icon={Footprints}
-          title="No breadcrumbs"
-          description="Either breadcrumb collection wasn't enabled in the SDK, or this event predates the SDK version that started sending them."
-        />
-      ) : (
-        <BreadcrumbList rows={preview} eventTimestamp={event.timestamp} />
-      )}
+      <BreadcrumbList rows={preview} eventTimestamp={event.timestamp} />
 
       <AllBreadcrumbsDialog open={allOpen} onOpenChange={setAllOpen} rows={rows} eventTimestamp={event.timestamp} />
     </DetailSection>

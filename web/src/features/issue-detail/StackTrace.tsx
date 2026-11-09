@@ -116,6 +116,7 @@ export function StackTrace({ exception, release, sourceLinks }: StackTraceProps)
               isCause={exceptionIndex > 0}
               rows={frameRows(current.frames, view)}
               linkFor={linkFor}
+              sourceStackRoot={sourceLinks?.source_stack_root ?? ""}
               isExpanded={(frameIndex) => expanded.has(frameKey(exceptionIndex, frameIndex))}
               onToggleFrame={(frameIndex) => setExpanded((keys) => toggled(keys, frameKey(exceptionIndex, frameIndex)))}
               isRunOpen={(start) => openRuns.has(frameKey(exceptionIndex, start))}
@@ -133,13 +134,24 @@ interface ExceptionFramesProps {
   isCause: boolean;
   rows: readonly FrameRow[];
   linkFor: LinkFor;
+  sourceStackRoot: string;
   isExpanded: (frameIndex: number) => boolean;
   onToggleFrame: (frameIndex: number) => void;
   isRunOpen: (start: number) => boolean;
   onToggleRun: (start: number) => void;
 }
 
-function ExceptionFrames({ exception, isCause, rows, linkFor, isExpanded, onToggleFrame, isRunOpen, onToggleRun }: ExceptionFramesProps) {
+function ExceptionFrames({
+  exception,
+  isCause,
+  rows,
+  linkFor,
+  sourceStackRoot,
+  isExpanded,
+  onToggleFrame,
+  isRunOpen,
+  onToggleRun
+}: ExceptionFramesProps) {
   return (
     <section>
       {isCause && <p className="text-muted-foreground mb-0.5 text-xs">Caused by</p>}
@@ -163,6 +175,7 @@ function ExceptionFrames({ exception, isCause, rows, linkFor, isExpanded, onTogg
                 expanded={isExpanded(row.index)}
                 onToggle={() => onToggleFrame(row.index)}
                 repositoryUrl={linkFor(row.frame)}
+                sourceStackRoot={sourceStackRoot}
               />
             ) : (
               <VendorRun
@@ -171,6 +184,7 @@ function ExceptionFrames({ exception, isCause, rows, linkFor, isExpanded, onTogg
                 open={isRunOpen(row.start)}
                 onToggle={() => onToggleRun(row.start)}
                 linkFor={linkFor}
+                sourceStackRoot={sourceStackRoot}
                 isExpanded={isExpanded}
                 onToggleFrame={onToggleFrame}
               />
@@ -187,12 +201,13 @@ interface VendorRunProps {
   open: boolean;
   onToggle: () => void;
   linkFor: LinkFor;
+  sourceStackRoot: string;
   isExpanded: (frameIndex: number) => boolean;
   onToggleFrame: (frameIndex: number) => void;
 }
 
 /** A folded run of library frames, opened in place rather than by switching the whole trace to Full. */
-function VendorRun({ row, open, onToggle, linkFor, isExpanded, onToggleFrame }: VendorRunProps) {
+function VendorRun({ row, open, onToggle, linkFor, sourceStackRoot, isExpanded, onToggleFrame }: VendorRunProps) {
   const count = row.frames.length;
 
   return (
@@ -216,6 +231,7 @@ function VendorRun({ row, open, onToggle, linkFor, isExpanded, onToggleFrame }: 
             expanded={isExpanded(row.start + offset)}
             onToggle={() => onToggleFrame(row.start + offset)}
             repositoryUrl={linkFor(frame)}
+            sourceStackRoot={sourceStackRoot}
           />
         ))}
     </>

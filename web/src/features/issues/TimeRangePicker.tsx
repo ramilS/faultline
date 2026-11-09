@@ -25,6 +25,8 @@ export interface TimeRangeValue {
 export interface TimeRangePickerProps {
   readonly value: TimeRangeValue;
   readonly onChange: (next: TimeRangeValue) => void;
+  /** Names what the range scopes, e.g. "Events", and becomes the trigger's visible and accessible name. */
+  readonly subject?: string;
 }
 
 function toDateInputValue(rfc3339: string): string {
@@ -38,7 +40,7 @@ function currentRangeLabel(value: TimeRangeValue): string {
   return value.statsPeriod === "" ? "All time" : PERIOD_LABELS[value.statsPeriod];
 }
 
-export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
+export function TimeRangePicker({ value, onChange, subject }: TimeRangePickerProps) {
   const [open, setOpen] = useState(false);
   const [fromDraft, setFromDraft] = useState(toDateInputValue(value.start));
   const [toDraft, setToDraft] = useState(toDateInputValue(value.end));
@@ -94,9 +96,14 @@ export function TimeRangePicker({ value, onChange }: TimeRangePickerProps) {
       }}
     >
       <PopoverTrigger asChild>
-        <Button variant="outline" size="sm" aria-label={`Time range: ${label}`} className="h-8 gap-1.5">
+        <Button
+          variant="outline"
+          size="sm"
+          aria-label={subject === undefined ? `Time range: ${label}` : undefined}
+          className="h-8 gap-1.5"
+        >
           <CalendarClock className="size-3.5" aria-hidden="true" />
-          {label}
+          {subject === undefined ? label : `${subject}: ${label}`}
         </Button>
       </PopoverTrigger>
       <PopoverContent align="start" className="w-72 space-y-3">

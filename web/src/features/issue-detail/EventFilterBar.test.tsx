@@ -40,7 +40,7 @@ describe("EventFilterBar", () => {
     );
 
     expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Time range:/ })).toBeDefined();
+    screen.getByRole("button", { name: "Events: All time" });
   });
 
   it("omits the environment select for an issue with no environments recorded", () => {
@@ -55,6 +55,20 @@ describe("EventFilterBar", () => {
     );
 
     expect(screen.queryByRole("combobox", { name: "Environment" })).toBeNull();
-    expect(screen.getByRole("button", { name: /Time range:/ })).toBeDefined();
+    screen.getByRole("button", { name: "Events: All time" });
+  });
+
+  it("names a chosen range as the events' range", () => {
+    render(
+      <EventFilterBar
+        environments={[]}
+        environment=""
+        onEnvironmentChange={() => {}}
+        timeRange={{ statsPeriod: "7d", start: "", end: "" }}
+        onTimeRangeChange={() => {}}
+      />
+    );
+
+    screen.getByRole("button", { name: "Events: Last 7 days" });
   });
 });

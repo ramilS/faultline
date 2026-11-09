@@ -1,15 +1,14 @@
-import { Waypoints } from "lucide-react";
 import { useCallback } from "react";
 
 import { api } from "@/apiClient";
-import { EmptyState } from "@/components/EmptyState";
 import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
+import { useAsyncResource } from "@/hooks/useAsyncResource";
 import { layoutBars, type TimelineBar } from "@/timelineLayout";
 import { cn } from "@/lib/utils";
 
-import { DetailSection } from "./DetailSection";
-import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { DetailSection, EmptySectionNote } from "./DetailSection";
+import { SECTION_SCROLL_MARGIN } from "./stickyHeader";
 
 interface RequestTimelineProps {
   eventId: string;
@@ -20,33 +19,34 @@ export function RequestTimeline({ eventId, requestId }: RequestTimelineProps) {
   const load = useCallback(() => api.getTimeline(eventId), [eventId]);
   const { state, reload } = useAsyncResource(load);
 
+  const empty = state.status === "ready" && state.value.length === 0;
+
+  // `useActiveSection` observes the element it finds when the section list
+  // changes, which a finished fetch does not do: the anchor stays the same
+  // element across the swap from the loading card to the empty note.
   return (
-    <DetailSection
-      id="section-timeline"
-      title="Request timeline"
-      description={<span className="font-mono break-all">{requestId}</span>}
-    >
-      {state.status === "loading" && (
-        <div className="space-y-2">
-          {[0, 1, 2].map((row) => (
-            <Skeleton key={row} className="h-6 w-full" />
-          ))}
-        </div>
+    <div id="section-timeline" style={{ scrollMarginTop: SECTION_SCROLL_MARGIN }}>
+      {empty ? (
+        <EmptySectionNote>
+          No spans traced for request <span className="font-mono break-all">{requestId}</span> — spans arrive on the
+          envelope alongside the event.
+        </EmptySectionNote>
+      ) : (
+        <DetailSection title="Request timeline" description={<span className="font-mono break-all">{requestId}</span>}>
+          {state.status === "loading" && (
+            <div className="space-y-2">
+              {[0, 1, 2].map((row) => (
+                <Skeleton key={row} className="h-6 w-full" />
+              ))}
+            </div>
+          )}
+
+          {state.status === "failed" && <ErrorState className="py-8" message={state.message} onRetry={reload} />}
+
+          {state.status === "ready" && <SpanBars bars={layoutBars(state.value)} />}
+        </DetailSection>
       )}
-
-      {state.status === "failed" && <ErrorState className="py-8" message={state.message} onRetry={reload} />}
-
-      {state.status === "ready" && state.value.length === 0 && (
-        <EmptyState
-          className="py-8"
-          icon={Waypoints}
-          title="No spans"
-          description="Nothing was traced for this request. Spans arrive on the envelope alongside the event."
-        />
-      )}
-
-      {state.status === "ready" && state.value.length > 0 && <SpanBars bars={layoutBars(state.value)} />}
-    </DetailSection>
+    </div>
   );
 }
 

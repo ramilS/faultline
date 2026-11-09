@@ -16,6 +16,7 @@ export interface IssueTableProps {
    */
   projectNames: ReadonlyMap<string, string> | null;
   selectedIds: ReadonlySet<number>;
+  showStatus: boolean;
   /** The sparkline column's active window, e.g. "14d" or "Range" — see windowColumnLabel. */
   windowLabel: string;
   sort: IssueSort;
@@ -28,6 +29,7 @@ export function IssueTable({
   issues,
   projectNames,
   selectedIds,
+  showStatus,
   windowLabel,
   sort,
   onSortChange,
@@ -68,10 +70,14 @@ export function IssueTable({
             sortValue="last_seen"
             activeSort={sort}
             onSortChange={onSortChange}
-            className="max-sm:pr-4"
+            className={cn("max-sm:pr-4", !showStatus && "sm:max-lg:pr-6")}
           />
-          <TableHead className="text-muted-foreground w-36 text-xs font-medium max-lg:hidden">Assignee</TableHead>
-          <TableHead className="text-muted-foreground w-28 pr-6 text-xs font-medium max-sm:hidden">Status</TableHead>
+          <TableHead className={cn("text-muted-foreground w-36 text-xs font-medium max-lg:hidden", !showStatus && "pr-6")}>
+            Assignee
+          </TableHead>
+          {showStatus && (
+            <TableHead className="text-muted-foreground w-28 pr-6 text-xs font-medium max-sm:hidden">Status</TableHead>
+          )}
         </TableRow>
       </TableHeader>
       <TableBody>
@@ -81,6 +87,7 @@ export function IssueTable({
             issue={issue}
             projectName={projectNames === null ? undefined : (projectNames.get(issue.project_slug) ?? issue.project_slug)}
             selected={selectedIds.has(issue.id)}
+            showStatus={showStatus}
             onSelectedChange={(selected) => onSelectedChange(issue.id, selected)}
           />
         ))}

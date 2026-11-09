@@ -66,7 +66,7 @@ export function IssueActions({ issue, slug, onChanged, onMerged }: IssueActionsP
     <Button
       variant="outline"
       size="sm"
-      disabled={pending || issue.status === action.status}
+      disabled={pending}
       onClick={() => void apply({ status: action.status }, `Issue marked ${action.status}.`)}
     >
       <action.icon aria-hidden="true" />
@@ -76,9 +76,9 @@ export function IssueActions({ issue, slug, onChanged, onMerged }: IssueActionsP
 
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {statusButton(RESOLVE)}
+      {issue.status !== "resolved" && statusButton(RESOLVE)}
       <IgnoreMenu disabled={pending} onIgnore={ignore} />
-      {statusButton(REOPEN)}
+      {issue.status !== "unresolved" && statusButton(REOPEN)}
 
       <Separator orientation="vertical" className="data-[orientation=vertical]:h-6 max-sm:hidden" />
 

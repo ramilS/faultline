@@ -1,11 +1,11 @@
 import { ChevronRight, ExternalLink } from "lucide-react";
 
 import type { SymbolicatedFrame } from "@/api";
-import { displayFunction, displayLocation, displayPosition } from "@/stacktrace";
+import { displayFunction, displayPosition } from "@/stacktrace";
 import { cn } from "@/lib/utils";
 
 import { FrameVariables } from "./FrameVariables";
-import { hasFrameDetail, hasSourceLocation, isInAppFrame } from "./frames";
+import { frameLocation, hasFrameDetail, isInAppFrame, type FrameLocation } from "./frames";
 import { isHighlightable, tokenizeSourceLines, type SourceTokenKind } from "./sourceSyntax";
 
 interface FrameProps {
@@ -14,6 +14,7 @@ interface FrameProps {
   expanded: boolean;
   onToggle: () => void;
   repositoryUrl: string | null;
+  sourceStackRoot: string;
 }
 
 /**
@@ -23,8 +24,9 @@ interface FrameProps {
  * label — colour alone would leave the distinction invisible to a colour-blind
  * reader, and that distinction is the whole point of the panel.
  */
-export function Frame({ frame, expanded, onToggle, repositoryUrl }: FrameProps) {
+export function Frame({ frame, expanded, onToggle, repositoryUrl, sourceStackRoot }: FrameProps) {
   const inApp = isInAppFrame(frame);
+  const location = frameLocation(frame, sourceStackRoot);
   const hasContext = frame.context.length > 0;
   const hasDetail = hasFrameDetail(frame);
   const summary = (
@@ -44,9 +46,7 @@ export function Frame({ frame, expanded, onToggle, repositoryUrl }: FrameProps) 
         {displayFunction(frame)}
       </span>
 
-      {hasSourceLocation(frame) && (
-        <span className="text-muted-foreground font-mono text-xs break-all">{displayLocation(frame)}</span>
-      )}
+      {location !== null && <LocationLabel location={location} />}
 
       {!inApp && (
         <span className="text-frame-vendor border-border ml-auto shrink-0 rounded border px-1 text-[10px] tracking-wide uppercase">
@@ -90,6 +90,26 @@ export function Frame({ frame, expanded, onToggle, repositoryUrl }: FrameProps) 
 
       {expanded && frame.vars !== null && <FrameVariables vars={frame.vars} />}
     </li>
+  );
+}
+
+/**
+ * The directory is clipped from its start, so the end nearest the file stays
+ * in view; `bdi` keeps the path itself left-to-right inside the RTL box that
+ * moves the ellipsis to the left.
+ */
+function LocationLabel({ location }: { location: FrameLocation }) {
+  return (
+    <span title={location.full} className="flex max-w-full min-w-0 items-baseline font-mono text-xs">
+      <span className="text-foreground shrink-0 font-normal whitespace-nowrap">
+        {location.file}:{location.line}
+      </span>
+      {location.directory !== "" && (
+        <span className="text-muted-foreground ml-2 min-w-0 truncate [direction:rtl]">
+          <bdi>{location.directory}</bdi>
+        </span>
+      )}
+    </span>
   );
 }
 

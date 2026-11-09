@@ -91,6 +91,7 @@ function IssueStreamView({ slug }: { slug: string | null }) {
             issues={issues}
             projectNames={slug === null ? projectNames : null}
             selectedIds={triage.selectedIds}
+            showStatus={filters.statuses.length !== 1}
             windowLabel={windowColumnLabel(filters)}
             sort={filters.sort}
             onSortChange={controls.setSort}
