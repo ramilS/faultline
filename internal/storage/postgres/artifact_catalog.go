@@ -114,6 +114,7 @@ func (repository *artifactCatalogRepository) List(ctx context.Context, projectID
 			if err := json.Unmarshal(refs, &artifact.NativeDebugIDRefs); err != nil {
 				return artifactcatalog.Page{}, fmt.Errorf("decode native references: %w", err)
 			}
+		case artifactcatalog.ProguardMapping:
 		}
 		artifacts = append(artifacts, artifact)
 	}

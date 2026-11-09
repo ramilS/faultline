@@ -4,6 +4,7 @@ package postgres_test
 
 import (
 	"bytes"
+	"errors"
 	"testing"
 	"time"
 
@@ -104,7 +105,7 @@ func TestArtifactCatalogGroupsFiltersPagesAndScopes(t *testing.T) {
 	if want := []string{"source_map", "proguard_mapping", "proguard_mapping", "native_debug_file"}; len(got) != len(want) || got[0] != want[0] || got[1] != want[1] || got[2] != want[2] || got[3] != want[3] {
 		t.Fatalf("paged=%v", got)
 	}
-	if _, err := repository.List(ctx, owner.ID, artifactcatalog.ListOptions{Limit: 1, Cursor: "invalid"}); err != artifactcatalog.ErrInvalidCursor {
+	if _, err := repository.List(ctx, owner.ID, artifactcatalog.ListOptions{Limit: 1, Cursor: "invalid"}); !errors.Is(err, artifactcatalog.ErrInvalidCursor) {
 		t.Fatalf("cursor error=%v", err)
 	}
 }

@@ -28,7 +28,7 @@ func (s *artifactCatalogStub) List(_ context.Context, projectID int64, options a
 }
 
 func catalogRequest(target string) *http.Request {
-	request := httptest.NewRequest(http.MethodGet, target, nil)
+	request := httptest.NewRequest(http.MethodGet, target, http.NoBody)
 	request.SetPathValue("slug", "web")
 	return request.WithContext(access.ContextWithScope(request.Context(), access.Unrestricted()))
 }
