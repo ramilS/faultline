@@ -16,6 +16,7 @@ import { DeleteNotificationChannelDialog } from "@/features/settings/DeleteNotif
 import { NotificationChannelDialog } from "@/features/settings/NotificationChannelDialog";
 import { NotificationChannelList } from "@/features/settings/NotificationChannelList";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function NotificationsPage() {
@@ -26,7 +27,7 @@ export function NotificationsPage() {
 }
 
 function NotificationsScreen({ slug }: { slug: string }) {
-  useDocumentTitle(`Notifications · ${slug}`);
+  useDocumentTitle(`Notifications · ${useProjectName(slug)}`);
   const { state, reload } = useAsyncResource<NotificationChannel[]>(
     useCallback(() => api.listNotificationChannels(slug), [slug])
   );

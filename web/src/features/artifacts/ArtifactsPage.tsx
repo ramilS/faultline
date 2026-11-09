@@ -15,6 +15,7 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 type Filter = "all" | ArtifactType;
@@ -29,7 +30,7 @@ export function ArtifactsPage() {
 }
 
 function ArtifactsScreen({ slug }: { slug: string }) {
-  useDocumentTitle(`Artifacts · ${slug}`);
+  useDocumentTitle(`Artifacts · ${useProjectName(slug)}`);
   const [filter, setFilter] = useState<Filter>("all");
   const [state, setState] = useState<LoadState>({ status: "loading" });
   const [loadingMore, setLoadingMore] = useState(false);

@@ -7,6 +7,10 @@ import type { IssueSummary, Regression } from "@/api";
 import { IssueHeader } from "./IssueHeader";
 import { STICKY_HEADER_HEIGHT_PROPERTY } from "./stickyHeader";
 
+vi.mock("@/features/projects/ProjectsProvider", () => ({
+  useProjects: () => ({ state: { status: "ready", projects: [{ id: 1, slug: "acme", name: "Acme" }] }, reload: vi.fn() })
+}));
+
 function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
   return {
     id: 42,
@@ -34,7 +38,7 @@ function renderHeader(issue: IssueSummary, latestMessage: string | null, regress
 }
 
 describe("IssueHeader", () => {
-  it("renders a breadcrumb trail with Projects and the slug as links, and the issue id as the current page", () => {
+  it("renders a breadcrumb trail with Projects and the project name as links, and the issue id as the current page", () => {
     renderHeader(buildIssue(), null);
 
     const trail = screen.getByRole("navigation", { name: "Breadcrumb" });
@@ -42,8 +46,9 @@ describe("IssueHeader", () => {
     const projectsLink = within(trail).getByRole("link", { name: "Projects" });
     expect(projectsLink).toHaveProperty("pathname", "/projects");
 
-    const slugLink = within(trail).getByRole("link", { name: "acme" });
-    expect(slugLink).toHaveProperty("pathname", "/acme/issues");
+    const projectLink = within(trail).getByRole("link", { name: "Acme" });
+    expect(projectLink).toHaveProperty("pathname", "/acme/issues");
+    expect(projectLink.getAttribute("title")).toBe("acme");
 
     // The current segment is text, not a link, and is marked current for assistive tech.
     expect(within(trail).queryByRole("link", { name: "#42" })).toBeNull();

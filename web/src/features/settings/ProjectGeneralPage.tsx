@@ -14,6 +14,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/SessionProvider";
 import { PlatformSelect } from "@/features/projects/PlatformSelect";
 import { useProjects } from "@/features/projects/ProjectsProvider";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useSaveForm } from "@/hooks/useSaveForm";
 
@@ -24,7 +25,7 @@ export function ProjectGeneralPage() {
 
 function ProjectGeneralScreen({ slug }: { slug: string }) {
   const { session } = useSession();
-  useDocumentTitle(`General · ${slug}`);
+  useDocumentTitle(`General · ${useProjectName(slug)}`);
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
   const { state, reload } = useProjects();
   const project = state.status === "ready" ? state.projects.find((candidate) => candidate.slug === slug) : undefined;

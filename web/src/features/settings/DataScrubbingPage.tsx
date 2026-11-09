@@ -15,6 +15,7 @@ import { ScrubRulesEditor } from "@/features/settings/ScrubRulesEditor";
 import { formatFieldList, parseFieldList } from "@/features/settings/scrubFields";
 import { validateRules } from "@/features/settings/scrubRules";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 import { useSaveForm } from "@/hooks/useSaveForm";
 
@@ -25,7 +26,7 @@ export function DataScrubbingPage() {
 
 function DataScrubbingScreen({ slug }: { slug: string }) {
   const { session } = useSession();
-  useDocumentTitle(`Data scrubbing · ${slug}`);
+  useDocumentTitle(`Data scrubbing · ${useProjectName(slug)}`);
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
   const { state, reload, replace } = useAsyncResource<DataScrubbing>(
     useCallback(() => api.getDataScrubbing(slug), [slug])

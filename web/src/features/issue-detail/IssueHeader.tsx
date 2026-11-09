@@ -7,6 +7,7 @@ import { LevelBadge } from "@/components/LevelBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Sparkline } from "@/components/Sparkline";
 import { StatusBadge } from "@/components/StatusBadge";
+import { useProjectName } from "@/features/projects/useProjectName";
 
 import { STICKY_HEADER_HEIGHT_PROPERTY, stickyHeaderHeightValue } from "./stickyHeader";
 
@@ -30,6 +31,7 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
   const trimmedMessage = latestMessage?.trim() ?? "";
   const hasDistinctMessage = trimmedMessage !== "" && trimmedMessage !== issue.title.trim();
   const banner = useRef<HTMLElement>(null);
+  const projectName = useProjectName(slug);
 
   // Publishes this header's height so jump-to-section anchors can clear it.
   // Re-measured on resize because the height moves with the viewport width
@@ -78,8 +80,8 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
             <ChevronRight className="size-3" aria-hidden="true" />
           </li>
           <li className="flex items-center gap-1">
-            <Link to={`/${slug}/issues`} className="hover:text-foreground transition-colors">
-              {slug}
+            <Link to={`/${slug}/issues`} title={slug} className="hover:text-foreground transition-colors">
+              {projectName}
             </Link>
             <ChevronRight className="size-3" aria-hidden="true" />
           </li>

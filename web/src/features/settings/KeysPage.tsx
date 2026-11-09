@@ -13,6 +13,7 @@ import { useSession } from "@/features/auth/SessionProvider";
 import { CreateKeyDialog } from "@/features/settings/CreateKeyDialog";
 import { KeyList } from "@/features/settings/KeyList";
 import { useProjects } from "@/features/projects/ProjectsProvider";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { RevealedKey } from "@/features/settings/RevealedKey";
 import { RevokeKeyDialog } from "@/features/settings/RevokeKeyDialog";
 import { SdkSetupCard } from "@/features/settings/SdkSetupCard";
@@ -33,7 +34,7 @@ interface KeysScreenProps {
 
 function KeysScreen({ slug }: KeysScreenProps) {
   const { session } = useSession();
-  useDocumentTitle(`Ingest keys · ${slug}`);
+  useDocumentTitle(`Ingest keys · ${useProjectName(slug)}`);
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
   const { state, reload } = useAsyncResource<Key[]>(useCallback(() => api.listKeys(slug), [slug]));
   const [revealed, setRevealed] = useState<CreatedKey | null>(null);

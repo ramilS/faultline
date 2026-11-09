@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { MemoryRouter, Route, Routes } from "react-router-dom";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
+vi.mock("@/features/projects/ProjectsProvider", () => ({
+  useProjects: () => ({ state: { status: "ready", projects: [{ id: 1, slug: "acme", name: "Acme" }] }, reload: vi.fn() })
+}));
+
 vi.mock("@/apiClient", () => ({ api: { listArtifacts: vi.fn() } }));
 
 import { ApiError, type ArtifactPage } from "@/api";

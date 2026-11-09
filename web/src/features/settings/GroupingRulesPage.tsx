@@ -18,6 +18,7 @@ import { GroupingRulesHelp } from "@/features/settings/GroupingRulesHelp";
 import { RuleFormDialog } from "@/features/settings/RuleFormDialog";
 import { RuleList } from "@/features/settings/RuleList";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function GroupingRulesPage() {
@@ -33,7 +34,7 @@ interface GroupingRulesScreenProps {
 
 function GroupingRulesScreen({ slug }: GroupingRulesScreenProps) {
   const { session } = useSession();
-  useDocumentTitle(`Grouping rules · ${slug}`);
+  useDocumentTitle(`Grouping rules · ${useProjectName(slug)}`);
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
   const { state, reload } = useAsyncResource<GroupingRule[]>(
     useCallback(() => api.listGroupingRules(slug), [slug])

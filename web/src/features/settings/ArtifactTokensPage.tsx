@@ -15,6 +15,7 @@ import { CreateArtifactTokenDialog } from "@/features/settings/CreateArtifactTok
 import { RevealedArtifactToken } from "@/features/settings/RevealedArtifactToken";
 import { RevokeArtifactTokenDialog } from "@/features/settings/RevokeArtifactTokenDialog";
 import { useAsyncResource } from "@/hooks/useAsyncResource";
+import { useProjectName } from "@/features/projects/useProjectName";
 import { useDocumentTitle } from "@/hooks/useDocumentTitle";
 
 export function ArtifactTokensPage() {
@@ -27,7 +28,7 @@ export function ArtifactTokensPage() {
 function ArtifactTokensScreen({ slug }: { slug: string }) {
   const { session } = useSession();
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
-  useDocumentTitle(`Artifact tokens · ${slug}`);
+  useDocumentTitle(`Artifact tokens · ${useProjectName(slug)}`);
   const { state, reload } = useAsyncResource<ArtifactToken[]>(useCallback(() => api.listArtifactTokens(slug), [slug]));
   const [revealed, setRevealed] = useState<CreatedArtifactToken | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<ArtifactToken | null>(null);

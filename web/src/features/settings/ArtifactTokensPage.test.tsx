@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const signedIn = vi.hoisted(() => ({ role: "owner" as "owner" | "member" }));
 
+vi.mock("@/features/projects/ProjectsProvider", () => ({
+  useProjects: () => ({ state: { status: "ready", projects: [{ id: 1, slug: "acme", name: "Acme" }] }, reload: vi.fn() })
+}));
+
 vi.mock("@/features/auth/SessionProvider", () => ({
   useSession: () => ({
     session: { state: "authenticated", user: { id: 1, name: "Ada", email: "ada@example.com", role: signedIn.role } }

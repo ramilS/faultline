@@ -4,6 +4,10 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const toasts = vi.hoisted(() => ({ success: vi.fn(), error: vi.fn() }));
 
+vi.mock("@/features/projects/ProjectsProvider", () => ({
+  useProjects: () => ({ state: { status: "ready", projects: [{ id: 1, slug: "acme", name: "Acme" }] }, reload: vi.fn() })
+}));
+
 vi.mock("sonner", () => ({ toast: toasts }));
 
 vi.mock("@/apiClient", () => ({
