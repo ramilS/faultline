@@ -52,6 +52,8 @@ type fakeRepository struct {
 	// caller's scope straight through rather than a hardcoded one.
 	lastDetailScope       access.Scope
 	lastUpdateStatusScope access.Scope
+	lastIgnoreScope       access.Scope
+	lastIgnoreCondition   IgnoreCondition
 	lastAssignScope       access.Scope
 	lastEventsScope       access.Scope
 	lastLatestEventScope  access.Scope
@@ -72,6 +74,11 @@ func (f *fakeRepository) Detail(_ context.Context, scope access.Scope, _ int64) 
 }
 func (f *fakeRepository) UpdateStatus(_ context.Context, scope access.Scope, _ int64, _ Status) error {
 	f.lastUpdateStatusScope = scope
+	return f.err
+}
+func (f *fakeRepository) Ignore(_ context.Context, scope access.Scope, _ int64, condition IgnoreCondition) error {
+	f.lastIgnoreScope = scope
+	f.lastIgnoreCondition = condition
 	return f.err
 }
 func (f *fakeRepository) Assign(_ context.Context, scope access.Scope, _ int64, _ *int64) error {
@@ -258,6 +265,25 @@ func TestSetStatusPropagatesRepositoryError(t *testing.T) {
 	service := NewService(&fakeRepository{err: sentinel})
 	if err := service.SetStatus(t.Context(), access.Unrestricted(), 1, StatusResolved); !errors.Is(err, sentinel) {
 		t.Fatalf("SetStatus err = %v, want wrapped %v", err, sentinel)
+	}
+}
+
+func TestIgnoreHandsTheConditionToTheRepository(t *testing.T) {
+	repository := &fakeRepository{}
+	condition := IgnoreCondition{Kind: IgnoreForUsers, Count: 10}
+	if err := NewService(repository).Ignore(t.Context(), access.Unrestricted(), 1, condition); err != nil {
+		t.Fatalf("Ignore: %v", err)
+	}
+	if repository.lastIgnoreCondition != condition {
+		t.Fatalf("repository got %+v, want %+v", repository.lastIgnoreCondition, condition)
+	}
+}
+
+func TestIgnoreKeepsTheRepositoryConditionError(t *testing.T) {
+	rejected := &IgnoreConditionError{Field: "users", Reason: "past the cap"}
+	err := NewService(&fakeRepository{err: rejected}).Ignore(t.Context(), access.Unrestricted(), 1, IgnoreCondition{Kind: IgnoreForUsers, Count: 10})
+	if got, ok := errors.AsType[*IgnoreConditionError](err); !ok || got != rejected {
+		t.Fatalf("Ignore err = %v, want the repository's %v", err, rejected)
 	}
 }
 
@@ -712,6 +738,14 @@ func TestServiceForwardsScopeToRepository(t *testing.T) {
 			scope: access.Limited([]int64{2}),
 			call:  func(scope access.Scope) { _ = service.SetStatus(ctx, scope, 5, StatusResolved) },
 			got:   func() access.Scope { return repository.lastUpdateStatusScope },
+		},
+		{
+			name:  "Ignore",
+			scope: access.Limited([]int64{2, 3}),
+			call: func(scope access.Scope) {
+				_ = service.Ignore(ctx, scope, 5, IgnoreCondition{Kind: IgnoreForEvents, Count: 100})
+			},
+			got: func() access.Scope { return repository.lastIgnoreScope },
 		},
 		{
 			name:  "SetAssignee",

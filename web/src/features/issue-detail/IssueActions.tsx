@@ -1,9 +1,10 @@
-import { BellOff, CircleCheck, CircleDot, GitMerge } from "lucide-react";
+import { CircleCheck, CircleDot, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
-import type { IssueChanges, IssueDetail, IssueStatus, IssueSummary } from "@/api";
+import type { IgnoreCondition, IssueChanges, IssueDetail, IssueStatus, IssueSummary } from "@/api";
 import { api } from "@/apiClient";
+import { IgnoreMenu } from "@/components/IgnoreMenu";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { messageFor } from "@/errors";
@@ -13,11 +14,14 @@ import { AssigneeMenu } from "./AssigneeMenu";
 import { CopyButton } from "./CopyButton";
 import { MergeDialog } from "./MergeDialog";
 
-const STATUS_ACTIONS: ReadonlyArray<{ status: IssueStatus; label: string; icon: typeof CircleDot }> = [
-  { status: "resolved", label: "Resolve", icon: CircleCheck },
-  { status: "ignored", label: "Ignore", icon: BellOff },
-  { status: "unresolved", label: "Reopen", icon: CircleDot }
-];
+interface StatusAction {
+  status: IssueStatus;
+  label: string;
+  icon: typeof CircleDot;
+}
+
+const RESOLVE: StatusAction = { status: "resolved", label: "Resolve", icon: CircleCheck };
+const REOPEN: StatusAction = { status: "unresolved", label: "Reopen", icon: CircleDot };
 
 interface IssueActionsProps {
   issue: IssueSummary;
@@ -54,20 +58,27 @@ export function IssueActions({ issue, slug, onChanged, onMerged }: IssueActionsP
     void apply({ assignee_id: assigneeId }, message);
   };
 
+  const ignore = (condition: IgnoreCondition | null) => {
+    void apply(condition === null ? { status: "ignored" } : { status: "ignored", ignore_until: condition }, "Issue ignored.");
+  };
+
+  const statusButton = (action: StatusAction) => (
+    <Button
+      variant="outline"
+      size="sm"
+      disabled={pending || issue.status === action.status}
+      onClick={() => void apply({ status: action.status }, `Issue marked ${action.status}.`)}
+    >
+      <action.icon aria-hidden="true" />
+      {action.label}
+    </Button>
+  );
+
   return (
     <div className="flex flex-wrap items-center gap-2">
-      {STATUS_ACTIONS.map((action) => (
-        <Button
-          key={action.status}
-          variant="outline"
-          size="sm"
-          disabled={pending || issue.status === action.status}
-          onClick={() => void apply({ status: action.status }, `Issue marked ${action.status}.`)}
-        >
-          <action.icon aria-hidden="true" />
-          {action.label}
-        </Button>
-      ))}
+      {statusButton(RESOLVE)}
+      <IgnoreMenu disabled={pending} onIgnore={ignore} />
+      {statusButton(REOPEN)}
 
       <Separator orientation="vertical" className="data-[orientation=vertical]:h-6 max-sm:hidden" />
 

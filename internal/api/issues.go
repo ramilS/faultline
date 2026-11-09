@@ -27,6 +27,7 @@ type IssueService interface {
 	ListIssues(context.Context, issue.ListFilters) (issue.Page, error)
 	IssueDetail(context.Context, access.Scope, int64) (issue.Detail, error)
 	SetStatus(context.Context, access.Scope, int64, issue.Status) error
+	Ignore(context.Context, access.Scope, int64, issue.IgnoreCondition) error
 	SetAssignee(context.Context, access.Scope, int64, *int64) error
 	IssueEvents(context.Context, access.Scope, issue.EventQuery) (issue.EventPage, error)
 	LatestEvent(context.Context, access.Scope, int64) (issue.EventDetail, error)
@@ -79,10 +80,18 @@ type issueResponse struct {
 	// Counts and PeriodCount are populated for a windowed list request;
 	// Counts24h/Counts14d are populated for a windowless one. Exactly one
 	// pair is ever non-empty — see toIssueResponse.
-	Counts      []int64 `json:"counts,omitempty"`
-	PeriodCount *int64  `json:"period_count,omitempty"`
-	Counts24h   []int64 `json:"counts_24h,omitempty"`
-	Counts14d   []int64 `json:"counts_14d,omitempty"`
+	Counts      []int64              `json:"counts,omitempty"`
+	PeriodCount *int64               `json:"period_count,omitempty"`
+	Counts24h   []int64              `json:"counts_24h,omitempty"`
+	Counts14d   []int64              `json:"counts_14d,omitempty"`
+	IgnoreUntil *ignoreUntilResponse `json:"ignore_until"`
+}
+
+type ignoreUntilResponse struct {
+	Kind  string  `json:"kind"`
+	Until *string `json:"until"`
+	Count *int64  `json:"count"`
+	SoFar *int64  `json:"so_far"`
 }
 
 type listedIssueResponse struct {
@@ -254,6 +263,7 @@ type patchIssueRequest struct {
 	Status      *string `json:"status"`
 	AssigneeID  *int64  `json:"assignee_id"`
 	assigneeSet bool
+	ignoreUntil json.RawMessage
 }
 
 // UnmarshalJSON records whether assignee_id was present so an explicit null
@@ -264,10 +274,11 @@ func (p *patchIssueRequest) UnmarshalJSON(data []byte) error {
 		return err
 	}
 	for key := range probe {
-		if key != "status" && key != "assignee_id" {
+		if key != "status" && key != "assignee_id" && key != "ignore_until" {
 			return fmt.Errorf("unknown field %q", key)
 		}
 	}
+	p.ignoreUntil = probe["ignore_until"]
 	if raw, ok := probe["status"]; ok {
 		var status string
 		if err := json.Unmarshal(raw, &status); err != nil {
@@ -306,11 +317,26 @@ func (h *IssueHandler) PatchIssue(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "no issue fields to update")
 		return
 	}
+	var condition *issue.IgnoreCondition
+	if input.ignoreUntil != nil {
+		parsed, err := parseIgnoreUntil(input.Status, input.ignoreUntil)
+		if err != nil {
+			writeError(w, http.StatusBadRequest, err.Error())
+			return
+		}
+		condition = &parsed
+	}
 	scope, ok := scopeOrRefuse(w, r)
 	if !ok {
 		return
 	}
-	if input.Status != nil {
+	switch {
+	case condition != nil:
+		err := h.service.Ignore(r.Context(), scope, id, *condition)
+		if !h.applyTriageError(w, "ignore issue", err) {
+			return
+		}
+	case input.Status != nil:
 		status := issue.Status(*input.Status)
 		err := h.service.SetStatus(r.Context(), scope, id, status)
 		if !h.applyTriageError(w, "set issue status", err) {
@@ -330,9 +356,59 @@ func (h *IssueHandler) PatchIssue(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusOK, toDetailResponse(detail))
 }
 
+func parseIgnoreUntil(status *string, raw json.RawMessage) (issue.IgnoreCondition, error) {
+	if status == nil || issue.Status(*status) != issue.StatusIgnored {
+		return issue.IgnoreCondition{}, errors.New(`invalid ignore_until: allowed only with status "ignored"`)
+	}
+	var fields map[string]json.RawMessage
+	if err := json.Unmarshal(raw, &fields); err != nil || fields == nil {
+		return issue.IgnoreCondition{}, errors.New("invalid ignore_until: must be an object")
+	}
+	var (
+		duration      *string
+		events, users *int64
+	)
+	for key, value := range fields {
+		var err error
+		switch key {
+		case "duration":
+			duration = new(string)
+			err = json.Unmarshal(value, duration)
+		case "events":
+			events = new(int64)
+			err = json.Unmarshal(value, events)
+		case "users":
+			users = new(int64)
+			err = json.Unmarshal(value, users)
+		default:
+			return issue.IgnoreCondition{}, fmt.Errorf("invalid ignore_until: unknown field %q", key)
+		}
+		if err != nil {
+			return issue.IgnoreCondition{}, fmt.Errorf("invalid ignore_until.%s: wrong type", key)
+		}
+	}
+	condition, err := issue.NewIgnoreCondition(duration, events, users)
+	if conditionError, ok := errors.AsType[*issue.IgnoreConditionError](err); ok {
+		return issue.IgnoreCondition{}, errors.New(ignoreConditionMessage(conditionError))
+	}
+	return condition, err
+}
+
+func ignoreConditionMessage(err *issue.IgnoreConditionError) string {
+	field := "ignore_until"
+	if err.Field != "" {
+		field += "." + err.Field
+	}
+	return fmt.Sprintf("invalid %s: %s", field, err.Reason)
+}
+
 // applyTriageError maps a mutation error to a response and reports whether the
 // caller may continue (true) or a response was already written (false).
 func (h *IssueHandler) applyTriageError(w http.ResponseWriter, operation string, err error) bool {
+	if conditionError, ok := errors.AsType[*issue.IgnoreConditionError](err); ok {
+		writeError(w, http.StatusBadRequest, ignoreConditionMessage(conditionError))
+		return false
+	}
 	switch {
 	case err == nil:
 		return true
@@ -685,6 +761,7 @@ func toIssueResponse(source issue.Issue) issueResponse {
 		UsersSeen:   source.UsersSeen,
 		FirstSeen:   source.FirstSeen.Format(time.RFC3339),
 		LastSeen:    source.LastSeen.Format(time.RFC3339),
+		IgnoreUntil: toIgnoreUntilResponse(source.IgnoreUntil),
 	}
 	// A windowless request never populates Issue.Counts (attachSparklines
 	// takes that branch only for a non-zero Window), so its emptiness is what
@@ -698,6 +775,21 @@ func toIssueResponse(source issue.Issue) issueResponse {
 	response.Counts = source.Counts
 	periodCount := source.PeriodCount
 	response.PeriodCount = &periodCount
+	return response
+}
+
+func toIgnoreUntilResponse(source *issue.ActiveIgnore) *ignoreUntilResponse {
+	if source == nil {
+		return nil
+	}
+	response := &ignoreUntilResponse{Kind: string(source.Kind)}
+	if source.Kind == issue.IgnoreForDuration {
+		until := source.Until.Format(time.RFC3339)
+		response.Until = &until
+		return response
+	}
+	response.Count = &source.Count
+	response.SoFar = &source.SoFar
 	return response
 }
 

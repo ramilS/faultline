@@ -102,7 +102,7 @@ export function IssueHeader({ issue, slug, latestMessage, regression, actions }:
           </p>
           <div className="text-muted-foreground mt-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs">
             <LevelBadge level={issue.level} />
-            <StatusBadge status={issue.status} />
+            <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} ignoreStyle="full" />
             {regression !== null && <RegressionBadge regression={regression} />}
             <span>
               First seen <RelativeTime iso={issue.first_seen} className="text-foreground" />

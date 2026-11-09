@@ -37,6 +37,15 @@ func TestMatch(t *testing.T) {
 			IssueChange{IssueID: 10, Trigger: TriggerRegression, Level: "error"},
 			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerRegression}},
 		},
+		"an escalation reaches a channel that wants regressions": {
+			ChannelFilter{ID: 1, NotifyRegression: true, MinLevel: "debug"},
+			IssueChange{IssueID: 10, Trigger: TriggerEscalation, Level: "error"},
+			[]Delivery{{ChannelID: 1, IssueID: 10, Trigger: TriggerEscalation}},
+		},
+		"a channel muted for regressions skips an escalation": {
+			ChannelFilter{ID: 1, NotifyNew: true, MinLevel: "debug"},
+			IssueChange{IssueID: 10, Trigger: TriggerEscalation, Level: "error"}, nil,
+		},
 		"a level below the channel minimum is skipped": {
 			ChannelFilter{ID: 1, NotifyNew: true, MinLevel: "error"},
 			IssueChange{IssueID: 10, Trigger: TriggerNew, Level: "warning"}, nil,

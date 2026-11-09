@@ -64,7 +64,7 @@ func (c ChannelFilter) wants(trigger Trigger) bool {
 	switch trigger {
 	case TriggerNew:
 		return c.NotifyNew
-	case TriggerRegression:
+	case TriggerRegression, TriggerEscalation:
 		return c.NotifyRegression
 	case TriggerTest:
 		return false

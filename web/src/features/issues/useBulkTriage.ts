@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 
-import type { IssueStatus, IssueSummary } from "@/api";
+import type { IgnoreCondition, IssueChanges, IssueStatus, IssueSummary } from "@/api";
 import { api } from "@/apiClient";
 import { messageFor } from "@/errors";
 
@@ -13,7 +13,7 @@ export interface BulkTriage {
   readonly setSelected: (id: number, selected: boolean) => void;
   readonly setAllSelected: (ids: readonly number[], selected: boolean) => void;
   readonly clear: () => void;
-  readonly apply: (status: IssueStatus) => void;
+  readonly apply: (status: IssueStatus, ignoreUntil?: IgnoreCondition | null) => void;
 }
 
 /**
@@ -60,7 +60,7 @@ export function useBulkTriage(
   }, []);
 
   const apply = useCallback(
-    (status: IssueStatus) => {
+    (status: IssueStatus, ignoreUntil: IgnoreCondition | null = null) => {
       const ids = [...selectedIds];
       if (ids.length === 0 || busy) {
         return;
@@ -68,7 +68,8 @@ export function useBulkTriage(
       setBusy(true);
       setError(null);
 
-      void Promise.allSettled(ids.map((id) => api.patchIssue(id, { status }))).then((results) => {
+      const changes: IssueChanges = ignoreUntil === null ? { status } : { status, ignore_until: ignoreUntil };
+      void Promise.allSettled(ids.map((id) => api.patchIssue(id, changes))).then((results) => {
         applyUpdates(results.flatMap((result) => (result.status === "fulfilled" ? [result.value.issue] : [])));
 
         const failures = results.flatMap((result) =>

@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // IssueActions reads the signed-in user via useSession() to mark them in the
@@ -23,13 +23,19 @@ vi.mock("@/lib/clipboard", () => ({
   copyToClipboard: vi.fn()
 }));
 
+vi.mock("@/apiClient", () => ({
+  api: { patchIssue: vi.fn() }
+}));
+
+import { api } from "@/apiClient";
 import { copyToClipboard } from "@/lib/clipboard";
 
-import type { IssueSummary } from "@/api";
+import type { IssueDetail, IssueSummary } from "@/api";
 
 import { IssueActions } from "./IssueActions";
 
 const mockedCopyToClipboard = vi.mocked(copyToClipboard);
+const patchIssue = vi.mocked(api.patchIssue);
 
 function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
   return {
@@ -45,6 +51,7 @@ function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
     users_seen: 3,
     first_seen: "2026-09-01T00:00:00Z",
     last_seen: "2026-09-09T00:00:00Z",
+    ignore_until: null,
     ...overrides
   };
 }
@@ -84,5 +91,56 @@ describe("IssueActions share button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     expect(mockedCopyToClipboard).toHaveBeenCalledWith(laterUrl, "Issue link");
+  });
+});
+
+describe("IssueActions ignore menu", () => {
+  beforeEach(() => {
+    patchIssue.mockReset();
+  });
+
+  function pickIgnoreChoice(name: string) {
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Ignore" }), { button: 0, ctrlKey: false, pointerType: "mouse" });
+    fireEvent.click(screen.getByRole("menuitem", { name }));
+  }
+
+  it("ignores until a condition and shows the server's result", async () => {
+    const ignored: IssueDetail = {
+      issue: buildIssue({ status: "ignored", ignore_until: { kind: "events", until: null, count: 100, so_far: 0 } }),
+      environments: [],
+      releases: [],
+      tags: [],
+      regression: null
+    };
+    patchIssue.mockResolvedValue(ignored);
+    const onChanged = vi.fn();
+    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={onChanged} onMerged={() => {}} />);
+
+    pickIgnoreChoice("Until 100 more events");
+
+    expect(patchIssue).toHaveBeenCalledWith(42, { status: "ignored", ignore_until: { events: 100 } });
+    await waitFor(() => expect(onChanged).toHaveBeenCalledWith(ignored));
+  });
+
+  it("ignores forever without a condition", () => {
+    patchIssue.mockReturnValue(new Promise(() => {}));
+    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+
+    pickIgnoreChoice("Forever");
+
+    expect(patchIssue).toHaveBeenCalledWith(42, { status: "ignored" });
+  });
+
+  it("stays available on an ignored issue so its condition can be replaced", () => {
+    render(
+      <IssueActions
+        issue={buildIssue({ status: "ignored", ignore_until: { kind: "users", until: null, count: 10, so_far: 3 } })}
+        slug="acme"
+        onChanged={() => {}}
+        onMerged={() => {}}
+      />
+    );
+
+    expect(screen.getByRole("button", { name: "Ignore" })).toHaveProperty("disabled", false);
   });
 });

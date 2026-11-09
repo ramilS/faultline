@@ -106,7 +106,7 @@ describe("NotificationsPage", () => {
     fireEvent.change(screen.getByLabelText("Chat ID"), { target: { value: "-1001234567890" } });
     fireEvent.change(screen.getByLabelText("Bot token"), { target: { value: "123456789:token" } });
     fireEvent.change(screen.getByLabelText("Environments"), { target: { value: "production, staging" } });
-    fireEvent.click(screen.getByRole("checkbox", { name: "Regressions — a resolved issue seen again" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Regressions — a resolved issue seen again, or an ignored one back" }));
     fireEvent.click(screen.getByRole("button", { name: "Add channel" }));
 
     await waitFor(() =>

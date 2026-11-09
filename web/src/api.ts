@@ -149,10 +149,22 @@ export interface IssueSummary {
   period_count?: number;
   counts_24h?: number[];
   counts_14d?: number[];
+  /** What an ignored issue comes back on; null when not ignored, or ignored forever. */
+  ignore_until: IgnoreUntil | null;
 }
 
+export type IgnoreUntil =
+  | { kind: "duration"; until: string; count: null; so_far: null }
+  | { kind: "events" | "users"; until: null; count: number; so_far: number };
+
+export type IgnoreDuration = "1h" | "24h" | "7d" | "30d";
+export type IgnoreCount = 10 | 100 | 1000;
+
+/** The one condition an Ignore can carry. Omitting it ignores forever. */
+export type IgnoreCondition = { duration: IgnoreDuration } | { events: IgnoreCount } | { users: IgnoreCount };
+
 export interface ListedIssue extends IssueSummary {
-  /** Never opened by the caller, or regressed since they last opened it. */
+  /** Never opened by the caller, or regressed or escalated since they last opened it. */
   unseen: boolean;
 }
 
@@ -329,6 +341,8 @@ export interface IssuePage {
 export interface IssueChanges {
   status?: IssueStatus;
   assignee_id?: number | null;
+  /** Only with status "ignored". */
+  ignore_until?: IgnoreCondition;
 }
 
 export interface ScrubRule {

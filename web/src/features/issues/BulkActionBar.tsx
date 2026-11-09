@@ -1,5 +1,7 @@
-import { BellOff, CircleCheck, X } from "lucide-react";
+import { CircleCheck, X } from "lucide-react";
 
+import type { IgnoreCondition } from "@/api";
+import { IgnoreMenu } from "@/components/IgnoreMenu";
 import { Button } from "@/components/ui/button";
 
 export interface BulkActionBarProps {
@@ -7,7 +9,7 @@ export interface BulkActionBarProps {
   busy: boolean;
   error: string | null;
   onResolve: () => void;
-  onIgnore: () => void;
+  onIgnore: (condition: IgnoreCondition | null) => void;
   onClear: () => void;
 }
 
@@ -33,10 +35,7 @@ export function BulkActionBar({ selectedCount, busy, error, onResolve, onIgnore,
             <CircleCheck className="size-3.5" aria-hidden="true" />
             Resolve
           </Button>
-          <Button variant="outline" size="sm" onClick={onIgnore} disabled={busy}>
-            <BellOff className="size-3.5" aria-hidden="true" />
-            Ignore
-          </Button>
+          <IgnoreMenu disabled={busy} onIgnore={onIgnore} />
           <Button variant="ghost" size="icon-sm" onClick={onClear} disabled={busy} aria-label="Clear selection">
             <X className="size-4" aria-hidden="true" />
           </Button>

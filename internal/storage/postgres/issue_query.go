@@ -260,7 +260,7 @@ func windowClause(window issue.Window, isOneProject bool, builder *predicateBuil
 }
 
 // unseenExpression reads the issue_views row buildListFilterQuery joins as v.
-const unseenExpression = "v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)"
+const unseenExpression = "v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)"
 
 func comparison(op issue.Operator) string {
 	switch op {

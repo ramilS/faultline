@@ -112,7 +112,8 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 	wantQuery := "\n" +
 		"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
 		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
-		"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
+		"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
+		"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
 		"\t\tFROM issues i\n" +
 		"\t\tJOIN projects p ON p.id = i.project_id\n" +
 		"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -167,7 +168,8 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 		wantQuery := "\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
-			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
+			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -223,7 +225,8 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
-			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
+			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
@@ -316,7 +319,8 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
 			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
-			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
+			"\t\t       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(GREATEST(i.regressed_at, i.escalated_at) > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +

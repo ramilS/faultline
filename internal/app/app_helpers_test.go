@@ -304,6 +304,9 @@ func (*stubIssueService) IssueDetail(context.Context, access.Scope, int64) (issu
 func (*stubIssueService) SetStatus(context.Context, access.Scope, int64, issue.Status) error {
 	return nil
 }
+func (*stubIssueService) Ignore(context.Context, access.Scope, int64, issue.IgnoreCondition) error {
+	return nil
+}
 func (*stubIssueService) SetAssignee(context.Context, access.Scope, int64, *int64) error { return nil }
 func (*stubIssueService) IssueEvents(context.Context, access.Scope, issue.EventQuery) (issue.EventPage, error) {
 	return issue.EventPage{}, nil

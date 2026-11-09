@@ -114,3 +114,28 @@ func TestTelegramIdentityAndSeverity(t *testing.T) {
 		}
 	}
 }
+
+func TestEveryTriggerHasItsOwnWording(t *testing.T) {
+	cases := []struct {
+		trigger      Trigger
+		heading      string
+		webhookEvent string
+	}{
+		{TriggerNew, "🆕 New issue", "issue.new"},
+		{TriggerRegression, "🔁 Regression", "issue.regression"},
+		{TriggerEscalation, "📈 Ignored issue is back", "issue.escalation"},
+		{TriggerTest, "🧪 Test notification", "issue.test"},
+		{Trigger("unknown"), "❔ Issue", "issue.unknown"},
+	}
+	for _, tc := range cases {
+		t.Run(string(tc.trigger), func(t *testing.T) {
+			text := TelegramText(Notification{Trigger: tc.trigger, ProjectName: "Shop", Title: "boom", Level: "error"})
+			if !strings.HasPrefix(text, "<b>"+tc.heading+"</b>\n") {
+				t.Fatalf("TelegramText starts %q, want heading %q", text, tc.heading)
+			}
+			if got := WebhookEvent(tc.trigger); got != tc.webhookEvent {
+				t.Fatalf("WebhookEvent = %q, want %q", got, tc.webhookEvent)
+			}
+		})
+	}
+}

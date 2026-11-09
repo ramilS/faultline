@@ -123,6 +123,38 @@ func TestIssueListUnseenReturnsOnlyOnRegression(t *testing.T) {
 	})
 }
 
+func TestIssueListUnseenReturnsOnEscalation(t *testing.T) {
+	ctx, pool, projectID := issueTestEnv(t)
+	repository := postgres.NewIssueRepository(pool)
+	viewer := seedViewer(t, pool, "viewer@example.com")
+	fingerprint := hex64("Escalating")
+	seedIssueAt(t, ctx, pool, projectID, fingerprint, "Escalating", nil, time.Now().UTC())
+	issueID := issueIDForFingerprint(t, ctx, pool, fingerprint)
+	scope := access.Unrestricted()
+	filters := issue.ListFilters{ProjectSlug: testProjectSlug, Scope: scope, ViewerID: viewer}
+	if err := repository.Ignore(ctx, scope, issueID, issue.IgnoreCondition{Kind: issue.IgnoreForEvents, Count: 10}); err != nil {
+		t.Fatalf("Ignore: %v", err)
+	}
+	if err := repository.RecordView(ctx, scope, viewer, issueID); err != nil {
+		t.Fatalf("RecordView: %v", err)
+	}
+
+	t.Run("events short of the target keep it seen", func(t *testing.T) {
+		seedIssueAt(t, ctx, pool, projectID, fingerprint, "Escalating", nil, time.Now().UTC())
+		if got := unseenByTitle(t, ctx, repository, filters); got["Escalating"] {
+			t.Fatalf("unseen = %v, want Escalating seen while still ignored", got)
+		}
+	})
+
+	t.Run("the escalation makes it unseen again", func(t *testing.T) {
+		mustExec(t, pool, `UPDATE issues SET ignore_until_times_seen = times_seen + 1 WHERE id = $1`, issueID)
+		seedIssueAt(t, ctx, pool, projectID, fingerprint, "Escalating", nil, time.Now().UTC())
+		if got := unseenByTitle(t, ctx, repository, filters); !got["Escalating"] {
+			t.Fatalf("unseen = %v, want Escalating unseen after it escalated", got)
+		}
+	})
+}
+
 func TestIssueListOnlyUnseenComposesWithStatus(t *testing.T) {
 	ctx, pool, projectID := issueTestEnv(t)
 	repository := postgres.NewIssueRepository(pool)

@@ -1,4 +1,4 @@
-// Package notify sends a project's new and regressed issues to the
+// Package notify sends a project's new, regressed and escalated issues to the
 // destinations (Telegram chats, webhooks) its owner configured.
 package notify
 
@@ -33,8 +33,9 @@ type Trigger string
 const (
 	TriggerNew        Trigger = "new"
 	TriggerRegression Trigger = "regression"
+	TriggerEscalation Trigger = "escalation"
 	// TriggerTest marks the message the dashboard's "send test" button sends.
-	// It is never queued: deliveries only ever carry new or regression.
+	// It is never queued.
 	TriggerTest Trigger = "test"
 )
 

@@ -15,6 +15,7 @@ type Repository interface {
 	List(context.Context, ListFilters) (Page, error)
 	Detail(context.Context, access.Scope, int64) (Detail, error)
 	UpdateStatus(context.Context, access.Scope, int64, Status) error
+	Ignore(context.Context, access.Scope, int64, IgnoreCondition) error
 	Assign(context.Context, access.Scope, int64, *int64) error
 	// CanBeAssigned reports whether userID may be assigned issueID: the
 	// account exists, is not deactivated, and reaches the issue's project.
@@ -146,6 +147,13 @@ func (s *Service) SetStatus(ctx context.Context, scope access.Scope, id int64, s
 	}
 	if err := s.repository.UpdateStatus(ctx, scope, id, status); err != nil {
 		return fmt.Errorf("set issue status: %w", err)
+	}
+	return nil
+}
+
+func (s *Service) Ignore(ctx context.Context, scope access.Scope, id int64, condition IgnoreCondition) error {
+	if err := s.repository.Ignore(ctx, scope, id, condition); err != nil {
+		return fmt.Errorf("ignore issue: %w", err)
 	}
 	return nil
 }

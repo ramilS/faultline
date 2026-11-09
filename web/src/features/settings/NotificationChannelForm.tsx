@@ -166,7 +166,7 @@ export function NotificationChannelForm({ slug, channel, onSaved, onCancel }: No
           />
           <CheckboxField
             id="channel-notify-regression"
-            label="Regressions — a resolved issue seen again"
+            label="Regressions — a resolved issue seen again, or an ignored one back"
             checked={values.notifyRegression}
             onChange={(checked) => update({ notifyRegression: checked })}
           />

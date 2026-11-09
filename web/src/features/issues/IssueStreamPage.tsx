@@ -129,7 +129,7 @@ function IssueStreamView({ slug }: { slug: string | null }) {
         busy={triage.busy}
         error={triage.error}
         onResolve={() => triage.apply("resolved")}
-        onIgnore={() => triage.apply("ignored")}
+        onIgnore={(condition) => triage.apply("ignored", condition)}
         onClear={triage.clear}
       />
     </>

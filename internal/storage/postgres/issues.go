@@ -17,6 +17,7 @@ import (
 
 	"github.com/ramilS/faultline/internal/access"
 	"github.com/ramilS/faultline/internal/grouping"
+	"github.com/ramilS/faultline/internal/ingest"
 	"github.com/ramilS/faultline/internal/issue"
 )
 
@@ -174,6 +175,7 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 	fmt.Fprintf(builder, `
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
 		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,
+		       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold,
 		       %s
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
@@ -226,12 +228,15 @@ func (repository *issueRepository) List(ctx context.Context, filters issue.ListF
 			listed                      issue.Issue
 			assigneeID                  *int64
 			assigneeName, assigneeEmail *string
+			ignore                      ignoreColumns
 		)
 		if err := rows.Scan(&listed.ID, &listed.Fingerprint, &listed.Title, &listed.Culprit,
 			&listed.Level, &listed.Status, &listed.TimesSeen, &listed.UsersSeen, &listed.FirstSeen, &listed.LastSeen,
-			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug, &listed.Unseen); err != nil {
+			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug,
+			&ignore.until, &ignore.timesSeenTarget, &ignore.usersSeenTarget, &ignore.threshold, &listed.Unseen); err != nil {
 			return issue.Page{}, translateIssueError("scan issue", err)
 		}
+		listed.IgnoreUntil = ignore.active(listed.TimesSeen, listed.UsersSeen)
 		listed.FirstSeen = listed.FirstSeen.UTC()
 		listed.LastSeen = listed.LastSeen.UTC()
 		if assigneeID != nil {
@@ -271,11 +276,13 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 		assigneeName, assigneeEmail *string
 		regressedAt                 *time.Time
 		regressedInRelease          *string
+		ignore                      ignoreColumns
 	)
 	err := repository.pool.QueryRow(ctx, `
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
 		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, i.merged_into_id, p.slug,
-		       i.regressed_at, i.regressed_in_release
+		       i.regressed_at, i.regressed_in_release,
+		       i.ignored_until, i.ignore_until_times_seen, i.ignore_until_users_seen, i.ignore_threshold
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
@@ -283,10 +290,12 @@ func (repository *issueRepository) Detail(ctx context.Context, scope access.Scop
 		&detail.Issue.Culprit, &detail.Issue.Level, &detail.Issue.Status,
 		&detail.Issue.TimesSeen, &detail.Issue.UsersSeen, &detail.Issue.FirstSeen, &detail.Issue.LastSeen,
 		&assigneeID, &assigneeName, &assigneeEmail, &detail.Issue.MergedIntoID, &detail.Issue.ProjectSlug,
-		&regressedAt, &regressedInRelease)
+		&regressedAt, &regressedInRelease,
+		&ignore.until, &ignore.timesSeenTarget, &ignore.usersSeenTarget, &ignore.threshold)
 	if err != nil {
 		return issue.Detail{}, translateIssueError("issue detail", err)
 	}
+	detail.Issue.IgnoreUntil = ignore.active(detail.Issue.TimesSeen, detail.Issue.UsersSeen)
 	detail.Issue.FirstSeen = detail.Issue.FirstSeen.UTC()
 	detail.Issue.LastSeen = detail.Issue.LastSeen.UTC()
 	if assigneeID != nil {
@@ -391,11 +400,47 @@ func (repository *issueRepository) UpdateStatus(ctx context.Context, scope acces
 	err := repository.pool.QueryRow(ctx, `
 		UPDATE issues SET status = $2::issue_status,
 		       regressed_at         = CASE WHEN $2::issue_status = 'unresolved' THEN regressed_at END,
-		       regressed_in_release = CASE WHEN $2::issue_status = 'unresolved' THEN regressed_in_release END
+		       regressed_in_release = CASE WHEN $2::issue_status = 'unresolved' THEN regressed_in_release END,
+		       escalated_at         = CASE WHEN $2::issue_status = 'unresolved' THEN escalated_at END,
+		       ignored_until = NULL, ignore_until_times_seen = NULL, ignore_until_users_seen = NULL, ignore_threshold = NULL
 		WHERE id = $1`+predicate+` RETURNING id
 	`, args...).Scan(&updated)
 	if err != nil {
 		return translateIssueError("update issue status", err)
+	}
+	return nil
+}
+
+func (repository *issueRepository) Ignore(ctx context.Context, scope access.Scope, id int64, condition issue.IgnoreCondition) error {
+	tx, err := repository.pool.Begin(ctx)
+	if err != nil {
+		return fmt.Errorf("begin ignore issue: %w", err)
+	}
+	defer tx.Rollback(ctx)
+
+	predicate, scopeArgs := scopePredicate(scope, "project_id", 5)
+	args := append([]any{id, string(condition.Kind), int64(condition.Duration / time.Second), condition.Count}, scopeArgs...)
+	var usersTarget *int64
+	err = tx.QueryRow(ctx, `
+		UPDATE issues SET status = 'ignored',
+		       regressed_at = NULL, regressed_in_release = NULL, escalated_at = NULL,
+		       ignored_until           = CASE WHEN $2::text = 'duration' THEN now() + $3::bigint * interval '1 second' END,
+		       ignore_until_times_seen = CASE WHEN $2::text = 'events' THEN times_seen + $4::bigint END,
+		       ignore_until_users_seen = CASE WHEN $2::text = 'users' THEN users_seen + $4::bigint END,
+		       ignore_threshold        = CASE WHEN $2::text IN ('events', 'users') THEN $4::bigint END
+		WHERE id = $1`+predicate+` RETURNING ignore_until_users_seen
+	`, args...).Scan(&usersTarget)
+	if err != nil {
+		return translateIssueError("ignore issue", err)
+	}
+	if usersTarget != nil && *usersTarget > ingest.MaxUsersPerIssue {
+		return &issue.IgnoreConditionError{
+			Field:  "users",
+			Reason: fmt.Sprintf("the issue would come back only past %d affected users, beyond which users are no longer counted", ingest.MaxUsersPerIssue),
+		}
+	}
+	if err := tx.Commit(ctx); err != nil {
+		return fmt.Errorf("commit ignore issue: %w", err)
 	}
 	return nil
 }

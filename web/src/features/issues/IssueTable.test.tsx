@@ -20,6 +20,7 @@ function buildIssue(overrides: Partial<ListedIssue>): ListedIssue {
     users_seen: 0,
     first_seen: "2026-09-01T00:00:00Z",
     last_seen: "2026-09-09T00:00:00Z",
+    ignore_until: null,
     counts_24h: [],
     counts_14d: [],
     unseen: false,
@@ -45,6 +46,19 @@ function renderTable(issues: readonly ListedIssue[], projectNames: ReadonlyMap<s
 }
 
 describe("IssueTable", () => {
+  it("shows an ignored issue's progress toward its condition on the status badge", () => {
+    renderTable(
+      [buildIssue({ status: "ignored", ignore_until: { kind: "events", until: null, count: 100, so_far: 99 } })],
+      null
+    );
+
+    const badges = screen.getAllByText("Ignored · 99 of 100 events");
+    expect(badges.map((badge) => badge.getAttribute("title"))).toEqual([
+      "Ignored until 100 more events · 99 so far",
+      "Ignored until 100 more events · 99 so far"
+    ]);
+  });
+
   it("links every row to its own project and names that project when listing every project", () => {
     renderTable(
       [

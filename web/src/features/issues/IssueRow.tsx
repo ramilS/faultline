@@ -79,7 +79,7 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
             usable width; the same information moves under it rather than away. */}
         <span className="mt-1 flex items-center gap-1.5 sm:hidden">
           <LevelBadge level={issue.level} />
-          <StatusBadge status={issue.status} />
+          <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />
         </span>
         {projectName !== undefined && (
           <span className="text-muted-foreground mt-1 block truncate text-xs md:hidden">{projectName}</span>
@@ -124,7 +124,7 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
       </TableCell>
 
       <TableCell className="w-28 pr-6 max-sm:hidden">
-        <StatusBadge status={issue.status} />
+        <StatusBadge status={issue.status} ignoreUntil={issue.ignore_until} />
       </TableCell>
     </TableRow>
   );

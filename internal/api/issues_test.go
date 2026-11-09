@@ -57,6 +57,8 @@ type stubIssueService struct {
 	// scopeOrRefuse's result straight through rather than a hardcoded scope.
 	lastDetailScope      access.Scope
 	lastSetStatusScope   access.Scope
+	lastIgnore           *issue.IgnoreCondition
+	ignoreErr            error
 	lastSetAssigneeScope access.Scope
 	lastEventsScope      access.Scope
 	lastLatestEventScope access.Scope
@@ -87,6 +89,13 @@ func (s *stubIssueService) IssueDetail(_ context.Context, scope access.Scope, _ 
 func (s *stubIssueService) SetStatus(_ context.Context, scope access.Scope, _ int64, status issue.Status) error {
 	s.lastStatus = status
 	s.lastSetStatusScope = scope
+	return s.err
+}
+func (s *stubIssueService) Ignore(_ context.Context, _ access.Scope, _ int64, condition issue.IgnoreCondition) error {
+	s.lastIgnore = &condition
+	if s.ignoreErr != nil {
+		return s.ignoreErr
+	}
 	return s.err
 }
 func (s *stubIssueService) SetAssignee(_ context.Context, scope access.Scope, _ int64, assignee *int64) error {
@@ -1779,6 +1788,141 @@ func TestRecordViewResponses(t *testing.T) {
 			}
 			if testCase.withSession && (service.lastViewUser != 7 || service.lastViewIssue != 42) {
 				t.Fatalf("view = user %d issue %d, want user 7 issue 42", service.lastViewUser, service.lastViewIssue)
+			}
+		})
+	}
+}
+
+func patchIssue(service *stubIssueService, body string) *httptest.ResponseRecorder {
+	recorder := httptest.NewRecorder()
+	request := newIssueRequest(http.MethodPatch, "/api/v1/issues/5", body)
+	request.SetPathValue("id", "5")
+	NewIssueHandler(service, Options{}).PatchIssue(recorder, request)
+	return recorder
+}
+
+func TestPatchIssueIgnoresUntilACondition(t *testing.T) {
+	cases := map[string]struct {
+		body string
+		want issue.IgnoreCondition
+	}{
+		"for 24 hours":    {`{"status":"ignored","ignore_until":{"duration":"24h"}}`, issue.IgnoreCondition{Kind: issue.IgnoreForDuration, Duration: 24 * time.Hour}},
+		"100 more events": {`{"status":"ignored","ignore_until":{"events":100}}`, issue.IgnoreCondition{Kind: issue.IgnoreForEvents, Count: 100}},
+		"10 more users":   {`{"status":"ignored","ignore_until":{"users":10}}`, issue.IgnoreCondition{Kind: issue.IgnoreForUsers, Count: 10}},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &stubIssueService{}
+
+			recorder := patchIssue(service, tc.body)
+
+			if recorder.Code != http.StatusOK {
+				t.Fatalf("status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
+			}
+			if service.lastIgnore == nil || *service.lastIgnore != tc.want {
+				t.Fatalf("ignore condition = %+v, want %+v", service.lastIgnore, tc.want)
+			}
+			if service.lastStatus != "" {
+				t.Fatalf("SetStatus was also called with %q", service.lastStatus)
+			}
+		})
+	}
+}
+
+func TestPatchIssueRejectsAnInvalidIgnoreConditionNamingTheField(t *testing.T) {
+	cases := map[string]struct {
+		body  string
+		field string
+	}{
+		"two conditions":              {`{"status":"ignored","ignore_until":{"duration":"1h","events":10}}`, "ignore_until"},
+		"no condition":                {`{"status":"ignored","ignore_until":{}}`, "ignore_until"},
+		"a null condition":            {`{"status":"ignored","ignore_until":null}`, "ignore_until"},
+		"an unknown condition":        {`{"status":"ignored","ignore_until":{"rate":10}}`, "ignore_until"},
+		"an unoffered duration":       {`{"status":"ignored","ignore_until":{"duration":"2h"}}`, "ignore_until.duration"},
+		"an unoffered events count":   {`{"status":"ignored","ignore_until":{"events":50}}`, "ignore_until.events"},
+		"a users count as text":       {`{"status":"ignored","ignore_until":{"users":"10"}}`, "ignore_until.users"},
+		"a condition while resolving": {`{"status":"resolved","ignore_until":{"events":10}}`, "ignore_until"},
+		"a condition without status":  {`{"ignore_until":{"events":10}}`, "ignore_until"},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &stubIssueService{}
+
+			recorder := patchIssue(service, strings.Replace(tc.body, "{", `{"assignee_id":7,`, 1))
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+			}
+			var body map[string]string
+			if err := json.Unmarshal(recorder.Body.Bytes(), &body); err != nil {
+				t.Fatalf("decode: %v", err)
+			}
+			if !strings.HasPrefix(body["error"], "invalid "+tc.field+":") {
+				t.Fatalf("error = %q, want it to name %s", body["error"], tc.field)
+			}
+			if service.lastIgnore != nil || service.lastStatus != "" || service.assignSet {
+				t.Fatalf("a rejected request changed the issue: ignore %+v, status %q, assignee set %v", service.lastIgnore, service.lastStatus, service.assignSet)
+			}
+		})
+	}
+}
+
+func TestPatchIssueMapsAUsersTargetPastTheCapTo400(t *testing.T) {
+	service := &stubIssueService{ignoreErr: fmt.Errorf("ignore issue: %w", &issue.IgnoreConditionError{Field: "users", Reason: "past the cap"})}
+
+	recorder := patchIssue(service, `{"status":"ignored","ignore_until":{"users":1000},"assignee_id":7}`)
+
+	if recorder.Code != http.StatusBadRequest {
+		t.Fatalf("status = %d, want 400 (body %s)", recorder.Code, recorder.Body.String())
+	}
+	if want := `{"error":"invalid ignore_until.users: past the cap"}`; strings.TrimSpace(recorder.Body.String()) != want {
+		t.Fatalf("body = %s, want %s", recorder.Body.String(), want)
+	}
+	if service.assignSet {
+		t.Fatalf("the assignee was applied after the ignore was refused")
+	}
+}
+
+func TestIgnoreUntilWireShape(t *testing.T) {
+	until := time.Date(2026, 11, 10, 9, 30, 0, 0, time.UTC)
+	cases := map[string]struct {
+		ignore *issue.ActiveIgnore
+		want   string
+	}{
+		"not ignored, or ignored forever": {nil, `null`},
+		"for a duration":                  {&issue.ActiveIgnore{Kind: issue.IgnoreForDuration, Until: until}, `{"kind":"duration","until":"2026-11-10T09:30:00Z","count":null,"so_far":null}`},
+		"until more events":               {&issue.ActiveIgnore{Kind: issue.IgnoreForEvents, Count: 100, SoFar: 37}, `{"kind":"events","until":null,"count":100,"so_far":37}`},
+		"until more users":                {&issue.ActiveIgnore{Kind: issue.IgnoreForUsers, Count: 10, SoFar: 0}, `{"kind":"users","until":null,"count":10,"so_far":0}`},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			listed := issue.Issue{ID: 5, Status: issue.StatusIgnored, FirstSeen: until, LastSeen: until, IgnoreUntil: tc.ignore}
+			service := &stubIssueService{detail: issue.Detail{Issue: listed}, page: issue.Page{Issues: []issue.Issue{listed}}}
+
+			detailRecorder := httptest.NewRecorder()
+			detailRequest := newIssueRequest(http.MethodGet, "/api/v1/issues/5", "")
+			detailRequest.SetPathValue("id", "5")
+			NewIssueHandler(service, Options{}).IssueDetail(detailRecorder, detailRequest)
+			var detail struct {
+				Issue map[string]json.RawMessage `json:"issue"`
+			}
+			if err := json.Unmarshal(detailRecorder.Body.Bytes(), &detail); err != nil {
+				t.Fatalf("decode detail: %v (body %s)", err, detailRecorder.Body.String())
+			}
+			if got := string(detail.Issue["ignore_until"]); got != tc.want {
+				t.Fatalf("detail issue.ignore_until = %s, want %s", got, tc.want)
+			}
+
+			listRecorder := httptest.NewRecorder()
+			NewIssueHandler(service, Options{}).ListIssues(listRecorder, newIssueRequest(http.MethodGet, "/api/v1/issues", ""))
+			var list struct {
+				Issues []map[string]json.RawMessage `json:"issues"`
+			}
+			if err := json.Unmarshal(listRecorder.Body.Bytes(), &list); err != nil || len(list.Issues) != 1 {
+				t.Fatalf("decode list: %v (body %s)", err, listRecorder.Body.String())
+			}
+			if got := string(list.Issues[0]["ignore_until"]); got != tc.want {
+				t.Fatalf("list issues[0].ignore_until = %s, want %s", got, tc.want)
 			}
 		})
 	}

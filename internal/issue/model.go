@@ -107,6 +107,7 @@ type Issue struct {
 	// nil for a live issue, otherwise the id of the issue it was merged into.
 	MergedIntoID *int64
 	Unseen       bool
+	IgnoreUntil  *ActiveIgnore
 }
 
 // TagValue is one distinct value of a tag key with its occurrence window.

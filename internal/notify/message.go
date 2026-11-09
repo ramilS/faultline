@@ -49,6 +49,8 @@ func headline(trigger Trigger) string {
 		return "New issue"
 	case TriggerRegression:
 		return "Regression"
+	case TriggerEscalation:
+		return "Ignored issue is back"
 	case TriggerTest:
 		return "Test notification"
 	}
@@ -143,6 +145,8 @@ func triggerIcon(trigger Trigger) string {
 		return "🆕"
 	case TriggerRegression:
 		return "🔁"
+	case TriggerEscalation:
+		return "📈"
 	case TriggerTest:
 		return "🧪"
 	}

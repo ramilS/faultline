@@ -40,7 +40,8 @@ func NewEventSink(pool *pgxpool.Pool) storage.EventSink {
 
 // PersistBatch writes one shard flush in a single transaction: it registers new
 // releases, upserts issue counters (auto-reopening resolved issues), COPYs the
-// event rows, COPYs the span rows, and accumulates tag facets. Callers must
+// event rows, COPYs the span rows, accumulates tag facets and users, and
+// reopens ignored issues whose ignore condition the batch met. Callers must
 // ensure each fingerprint appears at most once in Issues; ON CONFLICT DO UPDATE
 // rejects a fingerprint that would be affected twice in the same statement.
 func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) error {
@@ -73,6 +74,9 @@ func (sink *eventSink) PersistBatch(ctx context.Context, batch storage.Batch) er
 	if err := upsertUserIdentities(ctx, tx, batch, issueIDs); err != nil {
 		return err
 	}
+	if err := escalateIgnoredIssues(ctx, tx, issueIDs, transitions); err != nil {
+		return err
+	}
 	if err := markRegressions(ctx, tx, batch, issueIDs, transitions); err != nil {
 		return err
 	}
@@ -101,8 +105,8 @@ func insertReleases(ctx context.Context, tx pgx.Tx, batch storage.Batch) error {
 	return nil
 }
 
-// issueTransition is an issue a batch created or reopened from resolved —
-// the two changes channels can be notified of.
+// issueTransition is an issue a batch created, reopened from resolved, or
+// reopened from ignored — the changes channels can be notified of.
 type issueTransition struct {
 	trigger notify.Trigger
 	level   string
@@ -111,6 +115,41 @@ type issueTransition struct {
 // issueChanges attaches to each transition the environments of the batch's
 // events that landed on that issue, for the channels' environment filter,
 // and the first such event in each environment, for the notification's link.
+func escalateIgnoredIssues(ctx context.Context, tx pgx.Tx, issueIDs map[string]int64, transitions map[int64]issueTransition) error {
+	if len(issueIDs) == 0 {
+		return nil
+	}
+	touched := make([]int64, 0, len(issueIDs))
+	for _, id := range issueIDs {
+		touched = append(touched, id)
+	}
+	rows, err := tx.Query(ctx, `
+		UPDATE issues SET status = 'unresolved', escalated_at = now(),
+		       ignored_until = NULL, ignore_until_times_seen = NULL, ignore_until_users_seen = NULL, ignore_threshold = NULL
+		WHERE id = ANY($1::bigint[]) AND status = 'ignored'
+		  AND (ignored_until <= now() OR times_seen >= ignore_until_times_seen OR users_seen >= ignore_until_users_seen)
+		RETURNING id, level
+	`, touched)
+	if err != nil {
+		return fmt.Errorf("escalate ignored issues: %w", err)
+	}
+	defer rows.Close()
+	for rows.Next() {
+		var (
+			id    int64
+			level string
+		)
+		if err := rows.Scan(&id, &level); err != nil {
+			return fmt.Errorf("scan escalated issue: %w", err)
+		}
+		transitions[id] = issueTransition{trigger: notify.TriggerEscalation, level: level}
+	}
+	if err := rows.Err(); err != nil {
+		return fmt.Errorf("iterate escalated issues: %w", err)
+	}
+	return nil
+}
+
 func issueChanges(batch storage.Batch, issueIDs map[string]int64, transitions map[int64]issueTransition) []notify.IssueChange {
 	if len(transitions) == 0 {
 		return nil

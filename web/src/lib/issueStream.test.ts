@@ -18,6 +18,7 @@ function issue(id: number, overrides: Partial<ListedIssue> = {}): ListedIssue {
     users_seen: 1,
     first_seen: "2026-07-25T08:46:29Z",
     last_seen: "2026-07-26T08:38:20Z",
+    ignore_until: null,
     counts_24h: [],
     counts_14d: [],
     unseen: false,

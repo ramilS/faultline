@@ -25,6 +25,7 @@ function buildIssue(overrides: Partial<IssueSummary> = {}): IssueSummary {
     users_seen: 3,
     first_seen: "2026-09-01T00:00:00Z",
     last_seen: "2026-09-09T00:00:00Z",
+    ignore_until: null,
     ...overrides
   };
 }
@@ -38,6 +39,21 @@ function renderHeader(issue: IssueSummary, latestMessage: string | null, regress
 }
 
 describe("IssueHeader", () => {
+  it("spells out the condition an ignored issue comes back on, with its progress", () => {
+    renderHeader(
+      buildIssue({ status: "ignored", ignore_until: { kind: "events", until: null, count: 100, so_far: 37 } }),
+      null
+    );
+
+    expect(screen.getByText("Ignored until 100 more events · 37 so far")).toBeDefined();
+  });
+
+  it("says only Ignored for an issue ignored forever", () => {
+    renderHeader(buildIssue({ status: "ignored" }), null);
+
+    expect(screen.getByText("Ignored")).toBeDefined();
+  });
+
   it("renders a breadcrumb trail with Projects and the project name as links, and the issue id as the current page", () => {
     renderHeader(buildIssue(), null);
 
