@@ -1,10 +1,10 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 
-import type { IssuePage, IssueSummary } from "../api.ts";
+import type { IssuePage, IssueSummary, ListedIssue } from "../api.ts";
 import { appendPage, emptyStream, hasMore, replaceIssues } from "./issueStream.ts";
 
-function issue(id: number, overrides: Partial<IssueSummary> = {}): IssueSummary {
+function issue(id: number, overrides: Partial<ListedIssue> = {}): ListedIssue {
   return {
     id,
     project_slug: "web",
@@ -20,11 +20,12 @@ function issue(id: number, overrides: Partial<IssueSummary> = {}): IssueSummary 
     last_seen: "2026-07-26T08:38:20Z",
     counts_24h: [],
     counts_14d: [],
+    unseen: false,
     ...overrides
   };
 }
 
-function page(issues: readonly IssueSummary[], nextCursor: string | null): IssuePage {
+function page(issues: readonly ListedIssue[], nextCursor: string | null): IssuePage {
   return { issues: [...issues], next_cursor: nextCursor };
 }
 
@@ -156,4 +157,15 @@ test("replaceIssues with nothing to apply returns the same stream", () => {
   const stream = appendPage(emptyStream(KEY), page([issue(1)], null), KEY);
 
   assert.equal(replaceIssues(stream, []), stream);
+});
+
+test("replaceIssues keeps the row's own unseen flag, which a detail response does not carry", () => {
+  const stream = appendPage(emptyStream(KEY), page([issue(1, { unseen: true })], null), KEY);
+  const { unseen: _dropped, ...detailShaped } = issue(1, { status: "resolved" });
+  const update: IssueSummary = detailShaped;
+
+  const updated = replaceIssues(stream, [update]);
+
+  assert.equal(updated.issues[0].status, "resolved");
+  assert.equal(updated.issues[0].unseen, true);
 });

@@ -112,6 +112,8 @@ func (b *predicateBuilder) clauseFor(predicate issue.Predicate) (string, error) 
 		return b.timeClause("i.first_seen", predicate.Op, predicate.Values)
 	case issue.FieldLastSeen:
 		return b.timeClause("i.last_seen", predicate.Op, predicate.Values)
+	case issue.FieldUnseen:
+		return unseenExpression, nil
 	default:
 		return "", fmt.Errorf("unsupported filter field %d", predicate.Field)
 	}
@@ -256,6 +258,9 @@ func windowClause(window issue.Window, isOneProject bool, builder *predicateBuil
 	predicate := " AND i.id IN (SELECT issue_id FROM windowed)"
 	return cte, predicate
 }
+
+// unseenExpression reads the issue_views row buildListFilterQuery joins as v.
+const unseenExpression = "v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)"
 
 func comparison(op issue.Operator) string {
 	switch op {

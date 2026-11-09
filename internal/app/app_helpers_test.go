@@ -332,6 +332,9 @@ func (*stubIssueService) TagValues(context.Context, access.Scope, string, string
 func (*stubIssueService) IssueUsers(context.Context, access.Scope, int64, int) (issue.UserFacet, error) {
 	return issue.UserFacet{}, nil
 }
+func (*stubIssueService) RecordView(context.Context, access.Scope, int64, int64) error {
+	return nil
+}
 
 // appIngestKeyStoreStub backs TestRetiredEnvelopePathFailsClosedThroughTheRealHandler
 // with a key that resolves successfully, to project 1, so the only thing that

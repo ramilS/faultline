@@ -204,6 +204,34 @@ test("listIssues omits assigned entirely rather than sending it empty", async ()
   assert.equal(url.searchParams.has("assigned"), false);
 });
 
+test("listIssues sends unseen=true only when the filter is on, and reads the per-viewer unseen key", async () => {
+  const { fetch, calls } = recordingFetch(
+    jsonResponse(200, { issues: [{ id: 1, title: "Boom", unseen: true }], next_cursor: null }),
+  );
+  const api = createApi(fetch);
+
+  const page = await api.listIssues("web", { levels: ["error"], unseen: true });
+
+  const filtered = new URL(calls[0].url, "http://x.test");
+  assert.equal(filtered.searchParams.get("unseen"), "true");
+  assert.equal(filtered.searchParams.get("level"), "error");
+  assert.equal(page.issues[0].unseen, true);
+
+  const unfiltered = recordingFetch(jsonResponse(200, { issues: [], next_cursor: null }));
+  await createApi(unfiltered.fetch).listIssues("web", { levels: ["error"] });
+  assert.equal(new URL(unfiltered.calls[0].url, "http://x.test").searchParams.has("unseen"), false);
+});
+
+test("recordIssueView posts to the issue's view route and resolves on 204", async () => {
+  const { fetch, calls } = recordingFetch(new Response(null, { status: 204 }));
+  const api = createApi(fetch);
+
+  await api.recordIssueView(42);
+
+  assert.equal(calls[0].url, "/api/v1/issues/42/view");
+  assert.equal(calls[0].init.method, "POST");
+});
+
 test("listTagKeys returns a project's tag vocabulary", async () => {
   const { fetch, calls } = recordingFetch(
     jsonResponse(200, { tags: [{ key: "environment", value_count: 2, times_seen: 40 }] }),

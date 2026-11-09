@@ -75,6 +75,19 @@ describe("useUrlFilters", () => {
     expect(probe.search).not.toContain("q=boom");
   });
 
+  it("keeps only unseen in the URL alongside the other filters and reads it back", () => {
+    const probe = renderHook("?level=error");
+
+    act(() => probe.controls.setUnseen(true));
+    expect(new URLSearchParams(probe.search).get("unseen")).toBe("true");
+    expect(new URLSearchParams(probe.search).get("level")).toBe("error");
+    expect(probe.controls.filters.unseen).toBe(true);
+    expect(probe.controls.filters.levels).toEqual(["error"]);
+
+    act(() => probe.controls.setUnseen(false));
+    expect(new URLSearchParams(probe.search).has("unseen")).toBe(false);
+  });
+
   it("lets the URL win over a draft the user has stopped editing", () => {
     const probe = renderHook("?q=boom");
 

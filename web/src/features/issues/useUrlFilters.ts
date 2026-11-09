@@ -29,6 +29,7 @@ export interface UrlFilterControls {
   readonly setTags: (value: readonly TagFilter[]) => void;
   readonly setSort: (value: IssueSort) => void;
   readonly setTimeRange: (value: TimeRangeValue) => void;
+  readonly setUnseen: (value: boolean) => void;
   readonly clear: () => void;
 }
 
@@ -98,6 +99,8 @@ export function useUrlFilters(): UrlFilterControls {
   const setSort = useCallback((sort: IssueSort) => write({ ...filters, sort }, false), [filters, write]);
   const setTimeRange = useCallback((range: TimeRangeValue) => write({ ...filters, ...range }, false), [filters, write]);
 
+  const setUnseen = useCallback((unseen: boolean) => write({ ...filters, unseen }, false), [filters, write]);
+
   const clear = useCallback(() => write(CLEARED_FILTERS, false), [write]);
 
   return {
@@ -112,6 +115,7 @@ export function useUrlFilters(): UrlFilterControls {
     setTags,
     setSort,
     setTimeRange,
+    setUnseen,
     clear
   };
 }

@@ -230,6 +230,7 @@ func issueRoutes(dependencies Dependencies) []route {
 		{pattern: "GET /api/v1/issues/{id}", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueDetail)},
 		{pattern: "PATCH /api/v1/issues/{id}", gate: gateMember, handler: http.HandlerFunc(issueHandler.PatchIssue)},
 		{pattern: "POST /api/v1/issues/{id}/merge", gate: gateMember, handler: http.HandlerFunc(issueHandler.MergeIssue)},
+		{pattern: "POST /api/v1/issues/{id}/view", gate: gateMember, handler: http.HandlerFunc(issueHandler.RecordView)},
 		{pattern: "GET /api/v1/issues/{id}/events/latest", gate: gateMember, handler: http.HandlerFunc(issueHandler.LatestEvent)},
 		{pattern: "GET /api/v1/issues/{id}/events", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueEvents)},
 		{pattern: "GET /api/v1/issues/{id}/stats", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueStats)},

@@ -154,6 +154,16 @@ export function IssueFilterBar({ slug, controls }: IssueFilterBarProps) {
             </DropdownMenuContent>
           </DropdownMenu>
 
+          <Button
+            variant={filters.unseen ? "secondary" : "outline"}
+            size="sm"
+            className="h-8"
+            aria-pressed={filters.unseen}
+            onClick={() => controls.setUnseen(!filters.unseen)}
+          >
+            Only unseen
+          </Button>
+
           <Select
             value={filters.assigned === "" ? ASSIGNED_ANYONE : filters.assigned}
             onValueChange={(value) => controls.setAssigned(value === ASSIGNED_ANYONE ? "" : value)}

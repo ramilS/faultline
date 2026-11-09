@@ -1,4 +1,4 @@
-import { useCallback, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 
 import { isMergedIssue, type EventSummary } from "@/api";
@@ -6,6 +6,7 @@ import { NotFoundPage } from "@/app/NotFoundPage";
 import { ErrorState } from "@/components/ErrorState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { api } from "@/apiClient";
+import { issueViews } from "@/features/issues/issueViews";
 import type { TimeRangeValue } from "@/features/issues/TimeRangePicker";
 import { ALL_TIME_WINDOW } from "@/lib/issueFilters";
 
@@ -77,9 +78,15 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
 
   const loadIssue = useCallback(() => api.getIssue(issueId), [issueId]);
   const issue = useAsyncResource(loadIssue);
-  useDocumentTitle(
-    issue.state.status === "ready" && !isMergedIssue(issue.state.value) ? issue.state.value.issue.title : null
-  );
+  const loadedIssue =
+    issue.state.status === "ready" && !isMergedIssue(issue.state.value) ? issue.state.value.issue : null;
+  useDocumentTitle(loadedIssue?.title ?? null);
+  const viewedIssueId = loadedIssue?.id ?? null;
+  useEffect(() => {
+    if (viewedIssueId !== null) {
+      issueViews.record(viewedIssueId);
+    }
+  }, [viewedIssueId]);
 
   if (issue.state.status === "loading") {
     return <IssueDetailSkeleton />;

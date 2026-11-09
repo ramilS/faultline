@@ -48,7 +48,8 @@ const roundTrips: ReadonlyArray<[string, StreamFilters]> = [
       start: "",
       end: "",
       query: "cart total",
-      sort: "times_seen"
+      sort: "times_seen",
+      unseen: true
     }
   ],
   ["statuses only", { ...DEFAULT_FILTERS, statuses: ["resolved", "ignored"] }],
@@ -59,6 +60,7 @@ const roundTrips: ReadonlyArray<[string, StreamFilters]> = [
   ["tags only", { ...DEFAULT_FILTERS, tags: [{ key: "browser", value: "chrome" }] }],
   ["query only", { ...DEFAULT_FILTERS, query: "TypeError" }],
   ["sort only", { ...DEFAULT_FILTERS, sort: "first_seen" }],
+  ["only unseen", { ...DEFAULT_FILTERS, unseen: true }],
   ["sort only (users_seen)", { ...DEFAULT_FILTERS, sort: "users_seen" }],
   ["statsPeriod only", { ...DEFAULT_FILTERS, statsPeriod: "90d" }],
   ["absolute range", { ...DEFAULT_FILTERS, statsPeriod: "", start: "2026-07-01T00:00:00Z", end: "2026-07-08T00:00:00Z" }],
@@ -437,4 +439,23 @@ test("secondaryFilterCount: an assignee filter counts as one, and so does a chan
   assert.equal(secondaryFilterCount({ ...DEFAULT_FILTERS, assigned: "me" }), 1);
   assert.equal(secondaryFilterCount({ ...DEFAULT_FILTERS, statuses: ["unresolved", "resolved"] }), 1);
   assert.equal(secondaryFilterCount({ ...DEFAULT_FILTERS, statuses: [] }), 1);
+});
+
+test("only unseen is written to the URL as unseen=true and requested alongside the other filters", () => {
+  const filters: StreamFilters = { ...DEFAULT_FILTERS, levels: ["error"], unseen: true };
+  assert.equal(searchParamsFromFilters(filters).get("unseen"), "true");
+  const request = issueRequestFrom(filters, 50);
+  assert.equal(request.unseen, true);
+  assert.deepEqual(request.statuses, ["unresolved"]);
+  assert.deepEqual(request.levels, ["error"]);
+});
+
+test("only unseen is off by default and absent from both the URL and the request", () => {
+  assert.equal(searchParamsFromFilters(DEFAULT_FILTERS).has("unseen"), false);
+  assert.equal("unseen" in issueRequestFrom(DEFAULT_FILTERS, 50), false);
+  assert.equal(filtersFromSearchParams(new URLSearchParams("unseen=1")).unseen, false);
+});
+
+test("only unseen counts as a folded secondary filter", () => {
+  assert.equal(secondaryFilterCount({ ...DEFAULT_FILTERS, unseen: true }), 1);
 });

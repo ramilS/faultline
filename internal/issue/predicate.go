@@ -23,6 +23,7 @@ const (
 	FieldFirstSeen
 	FieldLastSeen
 	FieldTimesSeen
+	FieldUnseen
 )
 
 // Operator is the comparison a Predicate applies. Only FieldTimesSeen,

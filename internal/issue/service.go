@@ -30,6 +30,7 @@ type Repository interface {
 	TagKeys(context.Context, access.Scope, string) ([]TagKey, error)
 	TagValues(context.Context, access.Scope, string, string, string, int) ([]TagValue, error)
 	IssueUsers(context.Context, access.Scope, int64, int) (UserFacet, error)
+	RecordView(ctx context.Context, scope access.Scope, userID, issueID int64) error
 }
 
 // Service applies issue query and triage policy over a Repository.
@@ -130,6 +131,13 @@ func (s *Service) IssueDetail(ctx context.Context, scope access.Scope, id int64)
 		return Detail{}, fmt.Errorf("issue detail: %w", err)
 	}
 	return detail, nil
+}
+
+func (s *Service) RecordView(ctx context.Context, scope access.Scope, userID, issueID int64) error {
+	if err := s.repository.RecordView(ctx, scope, userID, issueID); err != nil {
+		return fmt.Errorf("record issue view: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) SetStatus(ctx context.Context, scope access.Scope, id int64, status Status) error {

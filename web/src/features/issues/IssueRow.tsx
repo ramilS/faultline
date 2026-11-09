@@ -1,7 +1,7 @@
 import type { MouseEvent } from "react";
 import { Link, useNavigate } from "react-router-dom";
 
-import type { IssueSummary } from "@/api";
+import type { ListedIssue } from "@/api";
 import { LevelBadge } from "@/components/LevelBadge";
 import { RelativeTime } from "@/components/RelativeTime";
 import { Sparkline } from "@/components/Sparkline";
@@ -9,9 +9,10 @@ import { StatusBadge } from "@/components/StatusBadge";
 import { Checkbox } from "@/components/ui/checkbox";
 import { TableCell, TableRow } from "@/components/ui/table";
 import { eventCount, eventCountTitle, sparklineCounts, sparklineWindow } from "@/lib/issueFilters";
+import { cn } from "@/lib/utils";
 
 export interface IssueRowProps {
-  issue: IssueSummary;
+  issue: ListedIssue;
   /** Set only when the list spans projects; renders the project column. */
   projectName?: string;
   selected: boolean;
@@ -59,9 +60,20 @@ export function IssueRow({ issue, projectName, selected, onSelectedChange }: Iss
       </TableCell>
 
       <TableCell className="w-full max-w-0 max-sm:whitespace-normal">
-        <Link to={to} className="text-sm font-medium hover:underline max-sm:line-clamp-2 sm:block sm:truncate">
-          {issue.title}
-        </Link>
+        <span className="flex min-w-0 items-center gap-1.5">
+          {issue.unseen && (
+            <span role="img" aria-label="Not viewed yet" className="bg-primary size-2 shrink-0 rounded-full" />
+          )}
+          <Link
+            to={to}
+            className={cn(
+              "min-w-0 text-sm hover:underline max-sm:line-clamp-2 sm:truncate",
+              issue.unseen ? "font-semibold" : "font-normal"
+            )}
+          >
+            {issue.title}
+          </Link>
+        </span>
         <span className="text-muted-foreground block truncate font-mono text-xs">{issue.culprit}</span>
         {/* Narrow viewports drop the level and status columns so the title keeps
             usable width; the same information moves under it rather than away. */}

@@ -3,6 +3,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { IssueSummary } from "@/api";
 import { api } from "@/apiClient";
 import { isNotFound, messageFor } from "@/errors";
+import { issueViews } from "@/features/issues/issueViews";
 import { issueRequestFrom, streamKey, type StreamFilters } from "@/lib/issueFilters";
 import { appendPage, emptyStream, replaceIssues, type IssueStream } from "@/lib/issueStream";
 
@@ -49,8 +50,10 @@ export function useIssueStream(slug: string | null, filters: StreamFilters): Iss
     setLoadingMore(false);
     setLoadMoreError(null);
 
-    api
-      .listIssues(slug, issueRequestFrom(filters, PAGE_SIZE))
+    // IssueDetail records its view without awaiting it; listing before that write lands shows the issue unseen.
+    issueViews
+      .settled()
+      .then(() => api.listIssues(slug, issueRequestFrom(filters, PAGE_SIZE)))
       .then((page) => {
         if (!active) {
           return;

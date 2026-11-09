@@ -50,6 +50,7 @@ export interface StreamFilters {
   readonly end: string;
   readonly query: string;
   readonly sort: IssueSort;
+  readonly unseen: boolean;
 }
 
 export const DEFAULT_FILTERS: StreamFilters = {
@@ -63,7 +64,8 @@ export const DEFAULT_FILTERS: StreamFilters = {
   start: "",
   end: "",
   query: "",
-  sort: "last_seen"
+  sort: "last_seen",
+  unseen: false
 };
 
 /**
@@ -227,6 +229,7 @@ export function filtersFromSearchParams(params: URLSearchParams): StreamFilters 
     tags,
     query: params.get("q") ?? "",
     sort: parseIssueSort(params.get("sort")),
+    unseen: params.get("unseen") === "true",
     ...parseWindow(params)
   };
 }
@@ -271,6 +274,9 @@ export function searchParamsFromFilters(filters: StreamFilters): URLSearchParams
   }
   if (filters.sort !== DEFAULT_FILTERS.sort) {
     params.set("sort", filters.sort);
+  }
+  if (filters.unseen) {
+    params.set("unseen", "true");
   }
   writeWindowParams(params, filters);
   return params;
@@ -478,6 +484,7 @@ export function issueRequestFrom(filters: StreamFilters, limit: number): IssueFi
     ...(filters.tags.length > 0 ? { tags: filters.tags.map(serializeTagParam) } : {}),
     ...(query === "" ? {} : { query }),
     sort: filters.sort,
+    ...(filters.unseen ? { unseen: true } : {}),
     limit,
     ...windowRequestFields(filters)
   };
@@ -501,6 +508,7 @@ export function secondaryFilterCount(filters: StreamFilters): number {
     filters.releases.length +
     filters.tags.length +
     (filters.assigned === "" ? 0 : 1) +
+    (filters.unseen ? 1 : 0) +
     (statusChanged ? 1 : 0)
   );
 }

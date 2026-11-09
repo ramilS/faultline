@@ -1,6 +1,6 @@
 import { ArrowDown } from "lucide-react";
 
-import type { IssueSort, IssueSummary } from "@/api";
+import type { IssueSort, ListedIssue } from "@/api";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Table, TableBody, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -8,7 +8,7 @@ import { IssueRow } from "@/features/issues/IssueRow";
 import { cn } from "@/lib/utils";
 
 export interface IssueTableProps {
-  issues: readonly IssueSummary[];
+  issues: readonly ListedIssue[];
   /**
    * Project names by slug when the list spans projects, which adds a project
    * column; null inside a single project, where the column would repeat the

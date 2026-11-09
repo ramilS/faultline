@@ -106,6 +106,7 @@ type Issue struct {
 	// MergedIntoID is set once this issue has been merged away (tombstoned):
 	// nil for a live issue, otherwise the id of the issue it was merged into.
 	MergedIntoID *int64
+	Unseen       bool
 }
 
 // TagValue is one distinct value of a tag key with its occurrence window.
@@ -212,7 +213,8 @@ type ListFilters struct {
 	// Scope restricts the list to projects the caller may read. It is part of
 	// the filter value rather than a separate parameter so that a call site
 	// cannot construct a list request that forgot it.
-	Scope access.Scope
+	Scope    access.Scope
+	ViewerID int64
 }
 
 // Page is a slice of issues plus the cursor for the next page (nil at end).

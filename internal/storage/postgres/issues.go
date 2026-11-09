@@ -167,16 +167,19 @@ func buildListFilterQuery(filters issue.ListFilters) (string, []any, error) {
 
 	scopeClause, scopeArgs := scopePredicate(filters.Scope, "p.id", len(args)+1)
 	args = append(args, scopeArgs...)
+	args = append(args, filters.ViewerID)
 
 	builder := &strings.Builder{}
 	builder.WriteString(cte)
-	builder.WriteString(`
+	fmt.Fprintf(builder, `
 		SELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,
-		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug
+		       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,
+		       %s
 		FROM issues i
 		JOIN projects p ON p.id = i.project_id
 		LEFT JOIN users u ON u.id = i.assignee_id
-		WHERE `)
+		LEFT JOIN issue_views v ON v.issue_id = i.id AND v.user_id = $%d
+		WHERE `, unseenExpression, len(args))
 	builder.WriteString(projectClause)
 	builder.WriteString(` AND i.merged_into_id IS NULL`)
 	builder.WriteString(scopeClause)
@@ -226,7 +229,7 @@ func (repository *issueRepository) List(ctx context.Context, filters issue.ListF
 		)
 		if err := rows.Scan(&listed.ID, &listed.Fingerprint, &listed.Title, &listed.Culprit,
 			&listed.Level, &listed.Status, &listed.TimesSeen, &listed.UsersSeen, &listed.FirstSeen, &listed.LastSeen,
-			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug); err != nil {
+			&assigneeID, &assigneeName, &assigneeEmail, &listed.ProjectSlug, &listed.Unseen); err != nil {
 			return issue.Page{}, translateIssueError("scan issue", err)
 		}
 		listed.FirstSeen = listed.FirstSeen.UTC()
@@ -361,6 +364,24 @@ func (repository *issueRepository) tagFacets(ctx context.Context, id int64) ([]i
 		return nil, nil, nil, translateIssueError("iterate tag facets", err)
 	}
 	return facets, environments, releases, nil
+}
+
+func (repository *issueRepository) RecordView(ctx context.Context, scope access.Scope, userID, issueID int64) error {
+	predicate, scopeArgs := scopePredicate(scope, "project_id", 3)
+	args := append([]any{userID, issueID}, scopeArgs...)
+	var recorded int64
+	err := repository.pool.QueryRow(ctx, `
+		INSERT INTO issue_views (user_id, issue_id, viewed_at)
+		SELECT $1, id, now() FROM issues
+		WHERE id = $2 AND merged_into_id IS NULL`+predicate+`
+		ON CONFLICT (user_id, issue_id)
+		DO UPDATE SET viewed_at = GREATEST(issue_views.viewed_at, EXCLUDED.viewed_at)
+		RETURNING issue_id
+	`, args...).Scan(&recorded)
+	if err != nil {
+		return translateIssueError("record issue view", err)
+	}
+	return nil
 }
 
 func (repository *issueRepository) UpdateStatus(ctx context.Context, scope access.Scope, id int64, status issue.Status) error {

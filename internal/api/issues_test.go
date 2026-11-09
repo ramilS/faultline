@@ -67,6 +67,13 @@ type stubIssueService struct {
 	lastTagValuesScope   access.Scope
 	lastUserFacetScope   access.Scope
 	lastMergeScope       access.Scope
+
+	lastViewUser, lastViewIssue int64
+}
+
+func (s *stubIssueService) RecordView(_ context.Context, _ access.Scope, userID, issueID int64) error {
+	s.lastViewUser, s.lastViewIssue = userID, issueID
+	return s.err
 }
 
 func (s *stubIssueService) ListIssues(_ context.Context, filters issue.ListFilters) (issue.Page, error) {
@@ -1665,4 +1672,114 @@ func TestIssueHandlerForwardsScopeToService(t *testing.T) {
 			t.Fatalf("scope = %+v, want %+v", service.lastStatsScope, scope)
 		}
 	})
+}
+
+func TestListIssuesPassesSessionUserAsViewerAndUnseenFilter(t *testing.T) {
+	service := &stubIssueService{}
+	handler := NewIssueHandler(service, Options{})
+
+	recorder := httptest.NewRecorder()
+	request := newIssueRequest(http.MethodGet, "/api/v1/projects/web/issues?unseen=true", "")
+	request.SetPathValue("slug", "web")
+	request = request.WithContext(ContextWithUser(request.Context(), auth.User{ID: 7, Email: "caller@example.com"}))
+	request = request.WithContext(access.ContextWithScope(request.Context(), access.Unrestricted()))
+	handler.ListIssues(recorder, request)
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body %s)", recorder.Code, recorder.Body.String())
+	}
+	if service.lastFilters.ViewerID != 7 {
+		t.Fatalf("viewer = %d, want the session user 7", service.lastFilters.ViewerID)
+	}
+	if !containsPredicate(service.lastFilters.Predicates, issue.Predicate{Field: issue.FieldUnseen}) {
+		t.Fatalf("predicates = %+v, want the unseen predicate", service.lastFilters.Predicates)
+	}
+}
+
+func TestParseListFiltersUnseenParam(t *testing.T) {
+	cases := []struct {
+		query      string
+		wantUnseen bool
+		wantErr    bool
+	}{
+		{query: "", wantUnseen: false},
+		{query: "unseen=true", wantUnseen: true},
+		{query: "unseen=false", wantErr: true},
+		{query: "unseen=", wantErr: true},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.query, func(t *testing.T) {
+			request := newIssueRequest(http.MethodGet, "/api/v1/issues?"+testCase.query, "")
+			filters, err := parseListFilters(request, "", true)
+			if (err != nil) != testCase.wantErr {
+				t.Fatalf("err = %v, wantErr %v", err, testCase.wantErr)
+			}
+			got := containsPredicate(filters.Predicates, issue.Predicate{Field: issue.FieldUnseen})
+			if got != testCase.wantUnseen {
+				t.Fatalf("unseen predicate = %v, want %v", got, testCase.wantUnseen)
+			}
+		})
+	}
+}
+
+func TestListIssuesWritesUnseenWireKey(t *testing.T) {
+	service := &stubIssueService{page: issue.Page{Issues: []issue.Issue{{ID: 1, Unseen: true}, {ID: 2}}}}
+	handler := NewIssueHandler(service, Options{})
+
+	recorder := httptest.NewRecorder()
+	request := newIssueRequest(http.MethodGet, "/api/v1/issues", "")
+	request = request.WithContext(ContextWithUser(request.Context(), auth.User{ID: 7}))
+	request = request.WithContext(access.ContextWithScope(request.Context(), access.Unrestricted()))
+	handler.ListIssues(recorder, request)
+
+	var payload struct {
+		Issues []map[string]any `json:"issues"`
+	}
+	if err := json.Unmarshal(recorder.Body.Bytes(), &payload); err != nil {
+		t.Fatalf("decode: %v (body %s)", err, recorder.Body.String())
+	}
+	if len(payload.Issues) != 2 || payload.Issues[0]["unseen"] != true || payload.Issues[1]["unseen"] != false {
+		t.Fatalf("issues = %v, want unseen true then false", payload.Issues)
+	}
+}
+
+func TestRecordViewResponses(t *testing.T) {
+	cases := []struct {
+		name        string
+		serviceErr  error
+		withSession bool
+		wantStatus  int
+		wantReport  bool
+	}{
+		{name: "recorded", withSession: true, wantStatus: http.StatusNoContent},
+		{name: "not found", serviceErr: issue.ErrNotFound, withSession: true, wantStatus: http.StatusNotFound},
+		{name: "server fault", serviceErr: errors.New("boom"), withSession: true, wantStatus: http.StatusInternalServerError, wantReport: true},
+		{name: "no session", withSession: false, wantStatus: http.StatusUnauthorized},
+	}
+	for _, testCase := range cases {
+		t.Run(testCase.name, func(t *testing.T) {
+			service := &stubIssueService{err: testCase.serviceErr}
+			reported := false
+			handler := NewIssueHandler(service, Options{ReportError: func(error) { reported = true }})
+
+			recorder := httptest.NewRecorder()
+			request := newIssueRequest(http.MethodPost, "/api/v1/issues/42/view", "")
+			request.SetPathValue("id", "42")
+			if testCase.withSession {
+				request = request.WithContext(ContextWithUser(request.Context(), auth.User{ID: 7}))
+			}
+			request = request.WithContext(access.ContextWithScope(request.Context(), access.Unrestricted()))
+			handler.RecordView(recorder, request)
+
+			if recorder.Code != testCase.wantStatus {
+				t.Fatalf("status = %d, want %d (body %s)", recorder.Code, testCase.wantStatus, recorder.Body.String())
+			}
+			if reported != testCase.wantReport {
+				t.Fatalf("reported = %v, want %v", reported, testCase.wantReport)
+			}
+			if testCase.withSession && (service.lastViewUser != 7 || service.lastViewIssue != 42) {
+				t.Fatalf("view = user %d issue %d, want user 7 issue 42", service.lastViewUser, service.lastViewIssue)
+			}
+		})
+	}
 }

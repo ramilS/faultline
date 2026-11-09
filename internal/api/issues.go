@@ -37,6 +37,7 @@ type IssueService interface {
 	TagKeys(context.Context, access.Scope, string) ([]issue.TagKey, error)
 	TagValues(context.Context, access.Scope, string, string, string, int) ([]issue.TagValue, error)
 	IssueUsers(context.Context, access.Scope, int64, int) (issue.UserFacet, error)
+	RecordView(ctx context.Context, scope access.Scope, userID, issueID int64) error
 }
 
 type IssueHandler struct {
@@ -84,9 +85,14 @@ type issueResponse struct {
 	Counts14d   []int64 `json:"counts_14d,omitempty"`
 }
 
+type listedIssueResponse struct {
+	issueResponse
+	Unseen bool `json:"unseen"`
+}
+
 type listIssuesResponse struct {
-	Issues     []issueResponse `json:"issues"`
-	NextCursor *string         `json:"next_cursor"`
+	Issues     []listedIssueResponse `json:"issues"`
+	NextCursor *string               `json:"next_cursor"`
 }
 
 type tagValueResponse struct {
@@ -131,13 +137,14 @@ func (h *IssueHandler) ListIssues(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	filters.Scope = scope
+	filters.ViewerID = user.ID
 	page, err := h.service.ListIssues(r.Context(), filters)
 	if !h.applyListIssuesError(w, err) {
 		return
 	}
-	items := make([]issueResponse, 0, len(page.Issues))
+	items := make([]listedIssueResponse, 0, len(page.Issues))
 	for _, listed := range page.Issues {
-		items = append(items, toIssueResponse(listed))
+		items = append(items, listedIssueResponse{issueResponse: toIssueResponse(listed), Unseen: listed.Unseen})
 	}
 	var nextCursor *string
 	if page.NextCursor != nil {
@@ -170,6 +177,33 @@ func (h *IssueHandler) applyListIssuesError(w http.ResponseWriter, err error) bo
 		writeError(w, http.StatusInternalServerError, "internal server error")
 	}
 	return false
+}
+
+func (h *IssueHandler) RecordView(w http.ResponseWriter, r *http.Request) {
+	id, ok := issueIDFromPath(w, r)
+	if !ok {
+		return
+	}
+	user, hasSession := UserFromContext(r.Context())
+	if !hasSession {
+		writeError(w, http.StatusUnauthorized, "authentication required")
+		return
+	}
+	scope, ok := scopeOrRefuse(w, r)
+	if !ok {
+		return
+	}
+	err := h.service.RecordView(r.Context(), scope, user.ID, id)
+	if errors.Is(err, issue.ErrNotFound) {
+		writeError(w, http.StatusNotFound, "issue not found")
+		return
+	}
+	if err != nil {
+		h.reportError(fmt.Errorf("record issue view: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // mergedIssueResponse is the tombstone-shaped detail response: it deliberately
@@ -516,6 +550,12 @@ func parseListFilters(r *http.Request, sessionEmail string, hasSession bool) (is
 		return issue.ListFilters{}, err
 	}
 	filters.Predicates = append(filters.Predicates, tagPredicates...)
+	if query.Has("unseen") {
+		if query.Get("unseen") != "true" {
+			return issue.ListFilters{}, fmt.Errorf("invalid unseen filter")
+		}
+		filters.Predicates = append(filters.Predicates, issue.Predicate{Field: issue.FieldUnseen})
+	}
 	if period := query.Get("statsPeriod"); period != "" {
 		trailing, err := parseStatsPeriod(period)
 		if err != nil {

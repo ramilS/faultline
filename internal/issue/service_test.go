@@ -123,6 +123,9 @@ func (f *fakeRepository) IssueUsers(_ context.Context, scope access.Scope, issue
 	f.lastUserFacetScope = scope
 	return f.userFacet, f.userErr
 }
+func (f *fakeRepository) RecordView(context.Context, access.Scope, int64, int64) error {
+	return nil
+}
 
 func TestListIssuesClampsLimitAndDefaultsSort(t *testing.T) {
 	repository := &fakeRepository{}

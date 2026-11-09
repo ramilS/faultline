@@ -1,9 +1,9 @@
-import type { IssuePage, IssueSummary } from "../api.ts";
+import type { IssuePage, IssueSummary, ListedIssue } from "../api.ts";
 
 export interface IssueStream {
   /** Identity of the filter set this accumulation belongs to (see `filtersKey`). */
   readonly key: string;
-  readonly issues: readonly IssueSummary[];
+  readonly issues: readonly ListedIssue[];
   /** Cursor for the next page; `null` once the server says the stream is exhausted. */
   readonly cursor: string | null;
 }
@@ -34,14 +34,21 @@ export function appendPage(current: IssueStream, page: IssuePage, key: string): 
  * accumulation untouched.
  *
  * Used after a bulk action so the loaded pages survive; refetching would reset
- * the stream and discard every page past the first.
+ * the stream and discard every page past the first. An update is a detail
+ * response, which carries no per-viewer `unseen`, so the row keeps its own.
  */
 export function replaceIssues(stream: IssueStream, updated: readonly IssueSummary[]): IssueStream {
   if (updated.length === 0) {
     return stream;
   }
   const byId = new Map(updated.map((issue) => [issue.id, issue]));
-  return { ...stream, issues: stream.issues.map((issue) => byId.get(issue.id) ?? issue) };
+  return {
+    ...stream,
+    issues: stream.issues.map((issue) => {
+      const update = byId.get(issue.id);
+      return update === undefined ? issue : { ...update, unseen: issue.unseen };
+    })
+  };
 }
 
 /**
@@ -50,9 +57,9 @@ export function replaceIssues(stream: IssueStream, updated: readonly IssueSummar
  * selection, so the first occurrence wins.
  */
 function withoutDuplicates(
-  base: readonly IssueSummary[],
-  incoming: readonly IssueSummary[]
-): readonly IssueSummary[] {
+  base: readonly ListedIssue[],
+  incoming: readonly ListedIssue[]
+): readonly ListedIssue[] {
   const seen = new Set(base.map((issue) => issue.id));
   return [...base, ...incoming.filter((issue) => !seen.has(issue.id))];
 }

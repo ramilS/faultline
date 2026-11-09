@@ -146,6 +146,11 @@ export interface IssueSummary {
   counts_14d?: number[];
 }
 
+export interface ListedIssue extends IssueSummary {
+  /** Never opened by the caller, or regressed since they last opened it. */
+  unseen: boolean;
+}
+
 export interface TagValue {
   value: string;
   times_seen: number;
@@ -307,10 +312,11 @@ export interface IssueFilters {
   sort?: IssueSort;
   limit?: number;
   cursor?: string;
+  unseen?: boolean;
 }
 
 export interface IssuePage {
-  issues: IssueSummary[];
+  issues: ListedIssue[];
   next_cursor: string | null;
 }
 
@@ -536,6 +542,7 @@ export interface FaultlineApi {
   listTagKeys(slug: string): Promise<TagKeyFacet[]>;
   listTagValues(slug: string, key: string, query?: string, signal?: AbortSignal): Promise<TagValue[]>;
   getIssue(id: number): Promise<IssueDetailResult>;
+  recordIssueView(id: number): Promise<void>;
   patchIssue(id: number, changes: IssueChanges): Promise<IssueDetail>;
   listIssueEvents(id: number, options?: ListIssueEventsOptions): Promise<{ events: EventSummary[]; next_cursor: string | null }>;
   getEvent(eventId: string): Promise<EventDetail>;
@@ -655,6 +662,7 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
       if (filters.sort) query.set("sort", filters.sort);
       if (filters.limit) query.set("limit", String(filters.limit));
       if (filters.cursor) query.set("cursor", filters.cursor);
+      if (filters.unseen) query.set("unseen", "true");
       const suffix = query.toString() ? `?${query.toString()}` : "";
       const path = slug === null ? "/api/v1/issues" : `/api/v1/projects/${encodeURIComponent(slug)}/issues`;
       return request<IssuePage>(fetchImpl, `${path}${suffix}`, { method: "GET" });
@@ -673,6 +681,9 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
       return body.values;
     },
     getIssue: async (id) => request<IssueDetailResult>(fetchImpl, `/api/v1/issues/${id}`, { method: "GET" }),
+    recordIssueView: async (id) => {
+      await request<void>(fetchImpl, `/api/v1/issues/${id}/view`, { method: "POST", expectNoContent: true });
+    },
     patchIssue: async (id, changes) => request<IssueDetail>(fetchImpl, `/api/v1/issues/${id}`, { method: "PATCH", json: changes }),
     listIssueEvents: async (id, options) => {
       const query = new URLSearchParams();

@@ -33,6 +33,7 @@ var foreignProjectCases = []accessCase{
 	// issues_access_integration_test.go for the repository-level version of
 	// this same distinction.
 	{pattern: "POST /api/v1/issues/{id}/merge", method: "POST", target: "/api/v1/issues/{foreignIssue}/merge", body: `{"target_id":{secondForeignIssue}}`},
+	{pattern: "POST /api/v1/issues/{id}/view", method: "POST", target: "/api/v1/issues/{foreignIssue}/view"},
 	{pattern: "GET /api/v1/issues/{id}/events", method: "GET", target: "/api/v1/issues/{foreignIssue}/events"},
 	{pattern: "GET /api/v1/issues/{id}/events/latest", method: "GET", target: "/api/v1/issues/{foreignIssue}/events/latest"},
 	{pattern: "GET /api/v1/issues/{id}/stats", method: "GET", target: "/api/v1/issues/{foreignIssue}/stats"},

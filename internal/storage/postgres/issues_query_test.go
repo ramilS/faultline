@@ -96,6 +96,7 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 	filters := issue.ListFilters{
 		ProjectSlug: "web",
 		Scope:       access.Unrestricted(),
+		ViewerID:    42,
 		Predicates: []issue.Predicate{
 			{Field: issue.FieldEnvironment, Values: []string{"production"}},
 			{Field: issue.FieldStatus, Values: []string{"unresolved"}},
@@ -110,10 +111,12 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 
 	wantQuery := "\n" +
 		"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
+		"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
+		"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
 		"\t\tFROM issues i\n" +
 		"\t\tJOIN projects p ON p.id = i.project_id\n" +
 		"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
+		"\t\tLEFT JOIN issue_views v ON v.issue_id = i.id AND v.user_id = $6\n" +
 		"\t\tWHERE p.slug = $1 AND i.merged_into_id IS NULL" +
 		" AND true" +
 		" AND (EXISTS (SELECT 1 FROM issue_tag_values t\n" +
@@ -130,6 +133,7 @@ func TestBuildListFilterQueryCombinesPredicatesAndFreeText(t *testing.T) {
 		"environment",          // $3: tag key
 		[]string{"unresolved"}, // $4: status value
 		"%boom%",               // $5: free-text pattern, reused for title and culprit
+		int64(42),              // $6: viewer for issue_views
 	}
 	if !reflect.DeepEqual(args, wantArgs) {
 		t.Fatalf("args = %#v, want %#v", args, wantArgs)
@@ -162,10 +166,12 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 
 		wantQuery := "\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
+			"\t\tLEFT JOIN issue_views v ON v.issue_id = i.id AND v.user_id = $5\n" +
 			"\t\tWHERE p.slug = $1 AND i.merged_into_id IS NULL" +
 			" AND true" +
 			" AND i.last_seen >= now() - $2::interval" +
@@ -180,6 +186,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"24h0m0s",              // $2: trailing duration, bound as an interval literal
 			[]string{"unresolved"}, // $3: status value
 			"%boom%",               // $4: free-text pattern
+			int64(0),               // $5: viewer for issue_views
 		}
 		if !reflect.DeepEqual(args, wantArgs) {
 			t.Fatalf("args = %#v, want %#v", args, wantArgs)
@@ -215,10 +222,12 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t)" +
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
+			"\t\tLEFT JOIN issue_views v ON v.issue_id = i.id AND v.user_id = $6\n" +
 			"\t\tWHERE p.slug = $1 AND i.merged_into_id IS NULL" +
 			" AND true" +
 			" AND i.id IN (SELECT issue_id FROM windowed)" +
@@ -234,6 +243,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			end,                    // $3: window end
 			[]string{"unresolved"}, // $4: status value
 			"%boom%",               // $5: free-text pattern
+			int64(0),               // $6: viewer for issue_views
 		}
 		if !reflect.DeepEqual(args, wantArgs) {
 			t.Fatalf("args = %#v, want %#v", args, wantArgs)
@@ -266,8 +276,8 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 		if !strings.HasSuffix(query, "WHERE p.slug = $1 AND i.merged_into_id IS NULL AND true AND i.id IN (SELECT issue_id FROM windowed)") {
 			t.Fatalf("query = %q, want the aggregate-membership predicate and nothing else in the WHERE clause", query)
 		}
-		if len(args) != 3 {
-			t.Fatalf("args = %#v, want exactly [slug, start, end] with no row-predicate args", args)
+		if len(args) != 4 {
+			t.Fatalf("args = %#v, want exactly [slug, start, end, viewer] with no row-predicate args", args)
 		}
 	})
 
@@ -305,10 +315,12 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			"\t)" +
 			"\n" +
 			"\t\tSELECT i.id, i.fingerprint, i.title, i.culprit, i.level, i.status,\n" +
-			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug\n" +
+			"\t\t       i.times_seen, i.users_seen, i.first_seen, i.last_seen, u.id, u.name, u.email, p.slug,\n" +
+			"\t\t       v.viewed_at IS NULL OR COALESCE(i.regressed_at > v.viewed_at, false)\n" +
 			"\t\tFROM issues i\n" +
 			"\t\tJOIN projects p ON p.id = i.project_id\n" +
 			"\t\tLEFT JOIN users u ON u.id = i.assignee_id\n" +
+			"\t\tLEFT JOIN issue_views v ON v.issue_id = i.id AND v.user_id = $7\n" +
 			"\t\tWHERE p.slug = $1 AND i.merged_into_id IS NULL" +
 			" AND true" +
 			" AND i.id IN (SELECT issue_id FROM windowed)" +
@@ -326,6 +338,7 @@ func TestBuildListFilterQueryCombinesWindowPredicatesAndFreeText(t *testing.T) {
 			[]string{"acme"}, // $4: tag value (no wildcard, so = ANY)
 			"tenant",         // $5: tag key
 			"%boom%",         // $6: free-text pattern
+			int64(0),         // $7: viewer for issue_views
 		}
 		if !reflect.DeepEqual(args, wantArgs) {
 			t.Fatalf("args = %#v, want %#v", args, wantArgs)
@@ -358,6 +371,7 @@ func TestBuildListFilterQueryAcrossEveryProject(t *testing.T) {
 			nil,                    // $1: no project slug
 			[]string{"unresolved"}, // $2: status value
 			[]int64{7, 9},          // $3: projects in scope
+			int64(0),               // $4: viewer for issue_views
 		}
 		if !reflect.DeepEqual(args, wantArgs) {
 			t.Fatalf("args = %#v, want %#v", args, wantArgs)

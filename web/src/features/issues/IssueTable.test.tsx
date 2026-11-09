@@ -2,11 +2,11 @@ import { render, screen, within } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { describe, expect, it } from "vitest";
 
-import type { IssueSummary } from "@/api";
+import type { ListedIssue } from "@/api";
 
 import { IssueTable } from "./IssueTable";
 
-function buildIssue(overrides: Partial<IssueSummary>): IssueSummary {
+function buildIssue(overrides: Partial<ListedIssue>): ListedIssue {
   return {
     id: 1,
     project_slug: "web",
@@ -22,11 +22,12 @@ function buildIssue(overrides: Partial<IssueSummary>): IssueSummary {
     last_seen: "2026-09-09T00:00:00Z",
     counts_24h: [],
     counts_14d: [],
+    unseen: false,
     ...overrides
   };
 }
 
-function renderTable(issues: readonly IssueSummary[], projectNames: ReadonlyMap<string, string> | null) {
+function renderTable(issues: readonly ListedIssue[], projectNames: ReadonlyMap<string, string> | null) {
   return render(
     <MemoryRouter>
       <IssueTable
@@ -74,5 +75,27 @@ describe("IssueTable", () => {
 
     expect(screen.queryByRole("columnheader", { name: "Project" })).toBeNull();
     expect(screen.getByRole("link", { name: "Web failure" }).getAttribute("href")).toBe("/web/issues/7");
+  });
+
+  it("marks an unseen issue with a named dot and a semibold title, and leaves a seen one regular", () => {
+    renderTable(
+      [
+        buildIssue({ id: 1, title: "Fresh failure", unseen: true }),
+        buildIssue({ id: 2, title: "Known failure", unseen: false })
+      ],
+      null
+    );
+
+    const freshLink = screen.getByRole("link", { name: "Fresh failure" });
+    const freshRow = freshLink.closest("tr") as HTMLElement;
+    within(freshRow).getByRole("img", { name: "Not viewed yet" });
+    expect(freshLink.className).toContain("font-semibold");
+
+    const knownLink = screen.getByRole("link", { name: "Known failure" });
+    const knownRow = knownLink.closest("tr") as HTMLElement;
+    expect(within(knownRow).queryByRole("img", { name: "Not viewed yet" })).toBeNull();
+    expect(knownLink.className).toContain("font-normal");
+    expect(knownLink.className).not.toContain("font-semibold");
+    expect(knownRow.className).not.toMatch(/opacity|text-muted/);
   });
 });
