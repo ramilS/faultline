@@ -6,6 +6,8 @@ import type { ListedIssue } from "@/api";
 
 import { IssueTable } from "./IssueTable";
 
+const UNSEEN_EDGE_BAR = "shadow-[inset_2px_0_0_var(--color-issue-unseen)]";
+
 function buildIssue(overrides: Partial<ListedIssue>): ListedIssue {
   return {
     id: 1,
@@ -121,7 +123,7 @@ describe("IssueTable", () => {
     expect(screen.getByRole("link", { name: "Web failure" }).getAttribute("href")).toBe("/web/issues/7");
   });
 
-  it("marks an unseen issue with a named dot and a semibold title, and leaves a seen one regular", () => {
+  it("marks an unseen issue with an edge bar, a screen-reader note and a semibold title, and leaves a seen one regular", () => {
     renderTable(
       [
         buildIssue({ id: 1, title: "Fresh failure", unseen: true }),
@@ -131,13 +133,15 @@ describe("IssueTable", () => {
     );
 
     const freshLink = screen.getByRole("link", { name: "Fresh failure" });
-    const freshRow = freshLink.closest("tr") as HTMLElement;
-    within(freshRow).getByRole("img", { name: "Not viewed yet" });
+    const freshRow = freshLink.closest("tr") as HTMLTableRowElement;
+    within(freshRow).getByText("Not viewed yet");
+    expect(freshRow.cells[0].className).toContain(UNSEEN_EDGE_BAR);
     expect(freshLink.className).toContain("font-semibold");
 
     const knownLink = screen.getByRole("link", { name: "Known failure" });
-    const knownRow = knownLink.closest("tr") as HTMLElement;
-    expect(within(knownRow).queryByRole("img", { name: "Not viewed yet" })).toBeNull();
+    const knownRow = knownLink.closest("tr") as HTMLTableRowElement;
+    expect(within(knownRow).queryByText("Not viewed yet")).toBeNull();
+    expect(knownRow.cells[0].className).not.toContain(UNSEEN_EDGE_BAR);
     expect(knownLink.className).toContain("font-normal");
     expect(knownLink.className).not.toContain("font-semibold");
     expect(knownRow.className).not.toMatch(/opacity|text-muted/);

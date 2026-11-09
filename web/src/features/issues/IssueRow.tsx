@@ -49,7 +49,7 @@ export function IssueRow({ issue, projectName, selected, showStatus, onSelectedC
       data-state={selected ? "selected" : undefined}
       className="cursor-pointer [&>td]:py-1.5"
     >
-      <TableCell className="w-10 pl-4 sm:pl-6">
+      <TableCell className={cn("w-10 pl-4 sm:pl-6", issue.unseen && "shadow-[inset_2px_0_0_var(--color-issue-unseen)]")}>
         <Checkbox
           checked={selected}
           onCheckedChange={(value) => onSelectedChange(value === true)}
@@ -63,9 +63,7 @@ export function IssueRow({ issue, projectName, selected, showStatus, onSelectedC
 
       <TableCell className="w-full max-w-0 max-sm:whitespace-normal">
         <span className="flex min-w-0 items-center gap-1.5">
-          {issue.unseen && (
-            <span role="img" aria-label="Not viewed yet" className="bg-primary size-2 shrink-0 rounded-full" />
-          )}
+          {issue.unseen && <span className="sr-only">Not viewed yet</span>}
           <Link
             to={to}
             className={cn(
