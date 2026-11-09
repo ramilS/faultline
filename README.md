@@ -28,9 +28,11 @@ into the binary; there is no separate service, queue, or worker to run.
   numbers, and the event's `user.ip_address` (unless the project stores user IPs) are
   replaced with `[Filtered]`. Owners add sensitive fields, safe fields, or turn it off
   per project under *Data scrubbing*. Owners can also add regex rules that replace
-  matches in any string (a bot token in a URL, an account number in a message): per
-  project under *Data scrubbing*, or for every project under *Settings → Data
-  scrubbing*. Instance-wide rules still apply to a project that turns scrubbing off.
+  matches in any string (a bot token in a URL, an account number in a message),
+  from a preset gallery or as a custom pattern, previewed through the server's own
+  scrubber: per project under *Data scrubbing*, or for every project under
+  *Scrubbing (all projects)*. Instance-wide rules still apply to a project that turns
+  scrubbing off.
   Events stored earlier are not rewritten, and with durable ingestion the raw envelope
   stays in the spill log until it is persisted. A stored rule that no longer validates
   (for example a hand-edited row) makes ingest fall back to the built-in scrubbing and

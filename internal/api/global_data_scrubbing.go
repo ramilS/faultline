@@ -14,6 +14,7 @@ import (
 type GlobalDataScrubbingService interface {
 	GetGlobal(ctx context.Context) ([]scrub.Rule, error)
 	UpdateGlobal(ctx context.Context, rules []scrub.Rule) ([]scrub.Rule, error)
+	PreviewGlobal(draft []scrub.Rule, sample string) (scrub.Preview, error)
 }
 
 type GlobalDataScrubbingHandler struct {
@@ -33,6 +34,16 @@ type globalDataScrubbingDocument struct {
 	Rules []scrub.Rule `json:"rules"`
 }
 
+type globalDataScrubbingView struct {
+	Rules         []scrub.Rule `json:"rules"`
+	DefaultFields []string     `json:"default_fields"`
+}
+
+type previewGlobalDataScrubbingRequest struct {
+	Rules  []scrub.Rule `json:"rules"`
+	Sample string       `json:"sample"`
+}
+
 func (h *GlobalDataScrubbingHandler) Get(w http.ResponseWriter, r *http.Request) {
 	rules, err := h.service.GetGlobal(r.Context())
 	if err != nil {
@@ -40,7 +51,7 @@ func (h *GlobalDataScrubbingHandler) Get(w http.ResponseWriter, r *http.Request)
 		writeError(w, http.StatusInternalServerError, "internal server error")
 		return
 	}
-	writeJSON(w, http.StatusOK, globalDataScrubbingDocument{Rules: nonNilRules(rules)})
+	writeJSON(w, http.StatusOK, globalDataScrubbingView{Rules: nonNilRules(rules), DefaultFields: scrub.DefaultSensitiveNames()})
 }
 
 // Update replaces the whole rule list; a body without "rules" is refused so an
@@ -70,6 +81,33 @@ func (h *GlobalDataScrubbingHandler) Update(w http.ResponseWriter, r *http.Reque
 		return
 	}
 	writeJSON(w, http.StatusOK, globalDataScrubbingDocument{Rules: nonNilRules(stored)})
+}
+
+func (h *GlobalDataScrubbingHandler) Preview(w http.ResponseWriter, r *http.Request) {
+	if !declaredJSONBody(r) {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	var input previewGlobalDataScrubbingRequest
+	if err := decodeSingleJSON(w, r, dataScrubbingBodyLimit, &input); err != nil {
+		writeError(w, http.StatusBadRequest, "invalid request")
+		return
+	}
+	if input.Rules == nil {
+		writeError(w, http.StatusBadRequest, "rules is required")
+		return
+	}
+	preview, err := h.service.PreviewGlobal(input.Rules, input.Sample)
+	if errors.Is(err, scrub.ErrInvalidConfig) {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	if err != nil {
+		h.reportError(fmt.Errorf("preview global data scrubbing: %w", err))
+		writeError(w, http.StatusInternalServerError, "internal server error")
+		return
+	}
+	writeJSON(w, http.StatusOK, preview)
 }
 
 func nonNilRules(rules []scrub.Rule) []scrub.Rule {

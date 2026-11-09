@@ -357,6 +357,41 @@ func TestGlobalDataScrubbingRoutesRejectASignedInMember(t *testing.T) {
 	}
 }
 
+func TestDataScrubbingPreviewRoutesAreOwnerOnly(t *testing.T) {
+	for _, test := range []struct {
+		path string
+		role auth.Role
+		want int
+	}{
+		{"/api/v1/projects/web/data-scrubbing/preview", auth.RoleMember, http.StatusForbidden},
+		{"/api/v1/settings/data-scrubbing/preview", auth.RoleMember, http.StatusForbidden},
+		{"/api/v1/projects/web/data-scrubbing/preview", auth.RoleOwner, http.StatusOK},
+		{"/api/v1/settings/data-scrubbing/preview", auth.RoleOwner, http.StatusOK},
+	} {
+		t.Run(string(test.role)+" "+test.path, func(t *testing.T) {
+			body := `{"rules":[],"sample":"x"}`
+			if strings.HasPrefix(test.path, "/api/v1/projects/") {
+				body = `{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]},"sample":"x"}`
+			}
+			recorder := httptest.NewRecorder()
+			request := httptest.NewRequest(http.MethodPost, "https://example.com"+test.path, strings.NewReader(body))
+			request.Header.Set("Cookie", api.SessionCookieName+"=token")
+			request.Header.Set("Origin", "https://example.com")
+			request.Header.Set("Content-Type", "application/json")
+
+			dependencies := authDependencies(&authServiceStub{authUser: auth.User{ID: 2, Role: test.role}})
+			dependencies.ProjectService = &appProjectServiceStub{}
+			dependencies.DataScrubbingService = &appDataScrubbingServiceStub{}
+			dependencies.GlobalDataScrubbingService = &appGlobalDataScrubbingServiceStub{}
+			New(dependencies).ServeHTTP(recorder, request)
+
+			if recorder.Code != test.want {
+				t.Fatalf("status = %d, want %d: %s", recorder.Code, test.want, recorder.Body.String())
+			}
+		})
+	}
+}
+
 func TestGlobalDataScrubbingRouteServesAnOwner(t *testing.T) {
 	for name, withProjectService := range map[string]bool{"with the project service": true, "global service only": false} {
 		t.Run(name, func(t *testing.T) {
@@ -371,8 +406,8 @@ func TestGlobalDataScrubbingRouteServesAnOwner(t *testing.T) {
 
 			New(dependencies).ServeHTTP(recorder, request)
 
-			if recorder.Code != http.StatusOK || strings.TrimSpace(recorder.Body.String()) != `{"rules":[]}` {
-				t.Fatalf("response = %d %s, want 200 {\"rules\":[]}", recorder.Code, recorder.Body.String())
+			if recorder.Code != http.StatusOK || !strings.HasPrefix(recorder.Body.String(), `{"rules":[],`) {
+				t.Fatalf("response = %d %s, want 200 with no rules", recorder.Code, recorder.Body.String())
 			}
 		})
 	}

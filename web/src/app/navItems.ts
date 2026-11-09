@@ -16,6 +16,8 @@ import {
 
 import type { UserRole } from "@/api";
 
+export const INSTANCE_SCRUBBING_LABEL = "Scrubbing (all projects)";
+
 export interface NavItem {
   readonly to: string;
   readonly label: string;
@@ -39,7 +41,7 @@ export function globalNavItems(role: UserRole): readonly NavItem[] {
   if (role === "owner") {
     items.push({ to: "/settings/users", label: "Users", icon: Users });
     items.push({ to: "/settings/groups", label: "Groups", icon: UsersRound });
-    items.push({ to: "/settings/data-scrubbing", label: "Data scrubbing", icon: ShieldCheck });
+    items.push({ to: "/settings/data-scrubbing", label: INSTANCE_SCRUBBING_LABEL, icon: ShieldCheck });
   }
   return items;
 }

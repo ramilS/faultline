@@ -1,0 +1,72 @@
+[
+  {
+    "name": "Telegram bot token",
+    "description": "Bot tokens in api.telegram.org URLs; the bot prefix is kept.",
+    "pattern": "bot\\d{6,}:[A-Za-z0-9_-]{30,}",
+    "replacement": "bot[Filtered]",
+    "example": "https://api.telegram.org/bot123456789:AAEhBP0av28fsJz-2kqEs_a1b2c3d4e5f6g/getMe"
+  },
+  {
+    "name": "AWS access key ID",
+    "description": "Access key IDs that start with AKIA or ASIA.",
+    "pattern": "\\b(?:AKIA|ASIA)[A-Z0-9]{16}\\b",
+    "replacement": "",
+    "example": "AKIAIOSFODNN7EXAMPLE"
+  },
+  {
+    "name": "GitHub token",
+    "description": "Personal, OAuth, user, server and refresh tokens (ghp_, gho_, ghu_, ghs_, ghr_).",
+    "pattern": "\\bgh[pousr]_[A-Za-z0-9]{36,}\\b",
+    "replacement": "",
+    "example": "ghp_abcdefghijklmnopqrstuvwxyz0123456789"
+  },
+  {
+    "name": "Email address",
+    "description": "Any email address, in messages, URLs and breadcrumbs alike.",
+    "pattern": "[A-Za-z0-9._%+-]+@[A-Za-z0-9-]+(?:\\.[A-Za-z0-9-]+)*\\.[A-Za-z]{2,}",
+    "replacement": "",
+    "example": "jane.doe@example.com"
+  },
+  {
+    "name": "JWT",
+    "description": "JSON Web Tokens: three dot-separated base64url parts, the first two starting with eyJ.",
+    "pattern": "\\beyJ[A-Za-z0-9_-]+\\.eyJ[A-Za-z0-9_-]+\\.[A-Za-z0-9_-]+",
+    "replacement": "",
+    "example": "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJleGFtcGxlIn0.c2lnbmF0dXJl"
+  },
+  {
+    "name": "Authorization: Bearer value",
+    "description": "The token after \"Authorization: Bearer\", however short; the header name is kept.",
+    "pattern": "(?i)(authorization:\\s*bearer\\s+)[^\\s\"']+",
+    "replacement": "${1}[Filtered]",
+    "example": "Authorization: Bearer abc123"
+  },
+  {
+    "name": "Slack token",
+    "description": "Bot, user and app tokens such as xoxb-, xoxp- and xoxa-.",
+    "pattern": "\\bxox[abeoprs]-[0-9A-Za-z-]{10,}",
+    "replacement": "",
+    "example": "xoxb-EXAMPLE-TOKEN"
+  },
+  {
+    "name": "Stripe secret or restricted key",
+    "description": "Secret (sk_) and restricted (rk_) keys, live or test; publishable pk_ keys are left alone.",
+    "pattern": "\\b[rs]k_(?:live|test)_[0-9A-Za-z]{10,}",
+    "replacement": "",
+    "example": "sk_live_EXAMPLE0000"
+  },
+  {
+    "name": "PEM private key block",
+    "description": "A whole -----BEGIN … PRIVATE KEY----- block, header to footer.",
+    "pattern": "-----BEGIN (?:[A-Z]+ )*PRIVATE KEY-----[\\s\\S]*?-----END (?:[A-Z]+ )*PRIVATE KEY-----",
+    "replacement": "",
+    "example": "-----BEGIN PRIVATE KEY-----\nMIIEexample\n-----END PRIVATE KEY-----"
+  },
+  {
+    "name": "IPv4 address",
+    "description": "Dotted IPv4 addresses anywhere in text, not only in the client IP fields.",
+    "pattern": "\\b(?:(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\.){3}(?:25[0-5]|2[0-4]\\d|1\\d\\d|[1-9]?\\d)\\b",
+    "replacement": "",
+    "example": "203.0.113.42"
+  }
+]

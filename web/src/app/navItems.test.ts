@@ -28,14 +28,14 @@ test("the groups entry is owner-only", () => {
   );
 });
 
-test("the instance-wide data scrubbing entry is owner-only", () => {
+test("the instance-wide scrubbing entry is owner-only and says it covers all projects", () => {
   assert.equal(
     globalNavItems("member").some((item) => item.to === "/settings/data-scrubbing"),
     false
   );
   assert.equal(
-    globalNavItems("owner").some((item) => item.to === "/settings/data-scrubbing"),
-    true
+    globalNavItems("owner").find((item) => item.to === "/settings/data-scrubbing")?.label,
+    "Scrubbing (all projects)"
   );
 });
 

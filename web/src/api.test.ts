@@ -780,6 +780,48 @@ test("updateGlobalScrubbing PUTs the rules as JSON", async () => {
   assert.deepEqual(scrubbing, { rules });
 });
 
+test("previewDataScrubbing POSTs the draft and the sample to the project's preview", async () => {
+  const preview = { scrubbed: "[Filtered]", segments: [{ text: "[Filtered]", redacted: true }] };
+  const { fetch, calls } = recordingFetch(jsonResponse(200, preview));
+  const api = createApi(fetch);
+  const config = { enabled: true, extra_fields: ["phone"], safe_fields: [], rules: [] };
+
+  const result = await api.previewDataScrubbing("my app", config, { sample: "s" });
+
+  assert.equal(calls[0].url, "/api/v1/projects/my%20app/data-scrubbing/preview");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), {
+    config: { enabled: true, extra_fields: ["phone"], safe_fields: [], rules: [] },
+    sample: "s"
+  });
+  assert.deepEqual(result, preview);
+});
+
+test("previewDataScrubbing asks for the latest event by the latest_event key", async () => {
+  const { fetch, calls } = recordingFetch(jsonResponse(200, { scrubbed: "", segments: [] }));
+  const api = createApi(fetch);
+
+  await api.previewDataScrubbing("web", { enabled: true, extra_fields: [], safe_fields: [], rules: [] }, { latest_event: true });
+
+  const body = JSON.parse(calls[0].init.body as string) as Record<string, unknown>;
+  assert.equal(body["latest_event"], true);
+  assert.equal("sample" in body, false);
+});
+
+test("previewGlobalScrubbing POSTs the draft rules and the sample", async () => {
+  const rules = [{ name: "n", pattern: "p", replacement: "" }];
+  const { fetch, calls } = recordingFetch(jsonResponse(400, { error: "pattern is not valid RE2" }));
+  const api = createApi(fetch);
+
+  await assert.rejects(api.previewGlobalScrubbing(rules, "sample"), (error: unknown) => {
+    assert.ok(error instanceof ApiError);
+    assert.equal(error.message, "pattern is not valid RE2");
+    return true;
+  });
+  assert.equal(calls[0].url, "/api/v1/settings/data-scrubbing/preview");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { rules, sample: "sample" });
+});
+
 const notificationChannelInput = {
   name: "Ops",
   kind: "telegram" as const,

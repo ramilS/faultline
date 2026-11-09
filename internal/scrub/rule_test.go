@@ -21,6 +21,8 @@ func TestNormalizeRulesValidates(t *testing.T) {
 		"empty pattern":                      {Rule{Name: "x"}, "pattern"},
 		"long pattern":                       {Rule{Name: "x", Pattern: strings.Repeat("a", 513)}, "pattern"},
 		"long replacement":                   {Rule{Name: "x", Pattern: `a`, Replacement: strings.Repeat("r", 129)}, "replacement"},
+		"description at the limit":           {Rule{Name: "x", Description: strings.Repeat("d", 200), Pattern: `a`}, ""},
+		"long description":                   {Rule{Name: "x", Description: strings.Repeat("d", 201), Pattern: `a`}, "description"},
 		"lookahead is not RE2":               {Rule{Name: "x", Pattern: `a(?=b)`}, "RE2"},
 		"unclosed group":                     {Rule{Name: "x", Pattern: `(abc`}, "RE2"},
 		"matches empty string":               {Rule{Name: "x", Pattern: `a*`}, "empty"},
@@ -92,44 +94,6 @@ func TestNormalizeRulesRefusesEveryPatternThatCanMatchEmpty(t *testing.T) {
 	}
 }
 
-// Mirrors the presets in web/src/features/settings/scrubRules.ts: each must be
-// valid RE2 and redact its own example.
-func TestWebPresetsAreValidRE2AndRedactTheirExamples(t *testing.T) {
-	cases := map[string]struct {
-		rule          Rule
-		example, want string
-	}{
-		"telegram": {
-			Rule{Name: "Telegram bot token", Pattern: `bot\d{6,}:[A-Za-z0-9_-]{30,}`, Replacement: "bot[Filtered]"},
-			"https://api.telegram.org/bot123456789:AAEhBP0av28fsJz-2kqEs_a1b2c3d4e5f6g/getMe",
-			"https://api.telegram.org/bot[Filtered]/getMe",
-		},
-		"aws access key id": {
-			Rule{Name: "AWS access key ID", Pattern: `\b(?:AKIA|ASIA)[A-Z0-9]{16}\b`},
-			"key AKIAIOSFODNN7EXAMPLE in config",
-			"key [Filtered] in config",
-		},
-		"github token": {
-			Rule{Name: "GitHub token", Pattern: `\bgh[pousr]_[A-Za-z0-9]{36,}\b`},
-			"token ghp_abcdefghijklmnopqrstuvwxyz0123456789 leaked",
-			"token [Filtered] leaked",
-		},
-	}
-	for name, tc := range cases {
-		t.Run(name, func(t *testing.T) {
-			rules, err := NormalizeRules([]Rule{tc.rule})
-			if err != nil {
-				t.Fatalf("NormalizeRules: %v", err)
-			}
-			config := DefaultConfig()
-			config.Rules = rules
-			if got := mustNew(t, config).String(tc.example); got != tc.want {
-				t.Fatalf("String = %q, want %q", got, tc.want)
-			}
-		})
-	}
-}
-
 func TestNewRefusesARuleThatDoesNotCompile(t *testing.T) {
 	bad := []Rule{{Name: "bad", Pattern: `(`}}
 	config := DefaultConfig()
@@ -155,14 +119,14 @@ func TestNormalizeRulesBoundsTheCount(t *testing.T) {
 	}
 }
 
-func TestNormalizeRulesReturnsNonNilAndTrimsNames(t *testing.T) {
+func TestNormalizeRulesReturnsNonNilAndTrimsNamesAndDescriptions(t *testing.T) {
 	empty, err := NormalizeRules(nil)
 	if err != nil || empty == nil || len(empty) != 0 {
 		t.Fatalf("NormalizeRules(nil) = %#v, %v; want empty non-nil", empty, err)
 	}
-	got, err := NormalizeRules([]Rule{{Name: "  Telegram ", Pattern: `a`}})
-	if err != nil || got[0].Name != "Telegram" {
-		t.Fatalf("NormalizeRules = %#v, %v; want trimmed name", got, err)
+	got, err := NormalizeRules([]Rule{{Name: "  Telegram ", Description: " Bot tokens. ", Pattern: `a`}})
+	if err != nil || got[0].Name != "Telegram" || got[0].Description != "Bot tokens." {
+		t.Fatalf("NormalizeRules = %#v, %v; want trimmed name and description", got, err)
 	}
 }
 

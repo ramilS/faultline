@@ -2,9 +2,11 @@ package postgres
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"fmt"
 
+	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
 
 	"github.com/ramilS/faultline/internal/ingest"
@@ -94,4 +96,44 @@ func (store *ProjectSettingsStore) UpdateGlobalRules(ctx context.Context, rules 
 		return errors.New("update global scrubbing rules: the instance_scrubbing row is missing")
 	}
 	return nil
+}
+
+func (store *ProjectSettingsStore) StoresUserIP(ctx context.Context, projectID int64) (bool, error) {
+	var stores bool
+	err := store.pool.QueryRow(ctx, `SELECT store_user_ip FROM projects WHERE id = $1`, projectID).Scan(&stores)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return false, project.ErrNotFound
+	}
+	if err != nil {
+		return false, fmt.Errorf("find store_user_ip: %w", err)
+	}
+	return stores, nil
+}
+
+// latestIssueEvents narrows the events hypertable, which has no index led by
+// project_id, to the most recently seen issue through events_issue_idx.
+const latestIssueEvents = `
+	FROM events
+	WHERE issue_id = (
+		SELECT id FROM issues WHERE project_id = $1 AND merged_into_id IS NULL ORDER BY last_seen DESC LIMIT 1
+	)`
+
+func (store *ProjectSettingsStore) HasEvents(ctx context.Context, projectID int64) (bool, error) {
+	var exists bool
+	if err := store.pool.QueryRow(ctx, `SELECT EXISTS (SELECT 1`+latestIssueEvents+`)`, projectID).Scan(&exists); err != nil {
+		return false, fmt.Errorf("find latest event: %w", err)
+	}
+	return exists, nil
+}
+
+func (store *ProjectSettingsStore) LatestEventPayload(ctx context.Context, projectID int64) (json.RawMessage, error) {
+	var payload []byte
+	err := store.pool.QueryRow(ctx, `SELECT payload`+latestIssueEvents+` ORDER BY received_at DESC, event_id DESC LIMIT 1`, projectID).Scan(&payload)
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, scrub.ErrNoEvents
+	}
+	if err != nil {
+		return nil, fmt.Errorf("find latest event: %w", err)
+	}
+	return payload, nil
 }

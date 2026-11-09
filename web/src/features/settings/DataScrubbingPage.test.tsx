@@ -15,18 +15,35 @@ vi.mock("@/features/auth/SessionProvider", () => ({
 }));
 
 vi.mock("@/apiClient", () => ({
-  api: { getDataScrubbing: vi.fn(), updateDataScrubbing: vi.fn() }
+  api: { getDataScrubbing: vi.fn(), updateDataScrubbing: vi.fn(), previewDataScrubbing: vi.fn() }
 }));
 
-import { ApiError, type DataScrubbing } from "@/api";
+import { ApiError, type DataScrubbingView } from "@/api";
 import { api } from "@/apiClient";
 
 import { DataScrubbingPage } from "./DataScrubbingPage";
 
 const getDataScrubbing = vi.mocked(api.getDataScrubbing);
 const updateDataScrubbing = vi.mocked(api.updateDataScrubbing);
+const previewDataScrubbing = vi.mocked(api.previewDataScrubbing);
 
-const current: DataScrubbing = { enabled: true, extra_fields: ["ssn"], safe_fields: [], rules: [] };
+const current: DataScrubbingView = {
+  enabled: true,
+  extra_fields: ["ssn"],
+  safe_fields: [],
+  rules: [],
+  default_fields: ["password", "token"],
+  has_events: true
+};
+
+const phoneHidden = {
+  scrubbed: '{\n  "phone": "[Filtered]"\n}',
+  segments: [
+    { text: '{\n  "phone": "', redacted: false },
+    { text: "[Filtered]", redacted: true },
+    { text: '"\n}', redacted: false }
+  ]
+};
 
 function renderPage() {
   return render(
@@ -43,6 +60,7 @@ describe("DataScrubbingPage", () => {
     signedIn.role = "owner";
     getDataScrubbing.mockReset();
     updateDataScrubbing.mockReset();
+    previewDataScrubbing.mockReset();
   });
 
   it("shows the stored configuration", async () => {
@@ -110,6 +128,8 @@ describe("DataScrubbingPage", () => {
 
     renderPage();
     await screen.findByLabelText("Additional sensitive fields");
+    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
+    fireEvent.click(screen.getByRole("button", { name: /A known kind of value/ }));
     fireEvent.click(screen.getByRole("button", { name: "Add Telegram bot token" }));
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
@@ -132,12 +152,10 @@ describe("DataScrubbingPage", () => {
   });
 
   it("does not call the server while a rule has a blank pattern", async () => {
-    getDataScrubbing.mockResolvedValue(current);
+    getDataScrubbing.mockResolvedValue({ ...current, rules: [{ name: "named", pattern: "", replacement: "" }] });
 
     renderPage();
     await screen.findByLabelText("Additional sensitive fields");
-    fireEvent.click(screen.getByRole("button", { name: "Add rule" }));
-    fireEvent.change(screen.getByLabelText("Rule 1 name"), { target: { value: "named" } });
     fireEvent.click(screen.getByRole("button", { name: "Save" }));
 
     expect((await screen.findByRole("alert")).textContent).toContain("Rule 1: pattern is required.");
@@ -174,5 +192,92 @@ describe("DataScrubbingPage", () => {
 
     expect(await screen.findByLabelText("Additional sensitive fields")).toHaveProperty("disabled", true);
     expect(screen.queryByRole("button", { name: "Save" })).toBeNull();
+    expect(screen.getByRole("list", { name: "Default sensitive field names" }).textContent).toBe("passwordtoken");
+    expect(screen.queryByRole("button", { name: "Add rule" })).toBeNull();
+    expect(screen.queryByRole("button", { name: "Use latest event" })).toBeNull();
+    expect(screen.queryByRole("link", { name: "Scrubbing (all projects)" })).toBeNull();
+  });
+
+  it("opens with the defaults served by the server", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+
+    renderPage();
+
+    expect((await screen.findByRole("list", { name: "Default sensitive field names" })).textContent).toBe("passwordtoken");
+    expect(screen.getByRole("heading", { name: "Protected by default" })).toBeTruthy();
+  });
+
+  it("links the instance-wide rules by the name the navigation uses", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+
+    renderPage();
+
+    expect((await screen.findByRole("link", { name: "Scrubbing (all projects)" })).getAttribute("href")).toBe("/settings/data-scrubbing");
+  });
+
+  it("hides a phone field picked from the dialog and previews the draft without saving", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+    previewDataScrubbing.mockResolvedValue(phoneHidden);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Add rule" }));
+    fireEvent.click(screen.getByRole("button", { name: /^A field/ }));
+    fireEvent.change(screen.getByLabelText("Field name"), { target: { value: "phone" } });
+    fireEvent.click(screen.getByRole("button", { name: "Hide this field" }));
+
+    expect(screen.getByLabelText("Additional sensitive fields")).toHaveProperty("value", "ssn\nphone");
+    fireEvent.change(screen.getByLabelText("Test sample"), { target: { value: '{"phone":"+1 555 0100"}' } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview sample" }));
+
+    expect((await screen.findByLabelText("Result")).querySelector("mark")?.textContent).toBe("[Filtered]");
+    expect(previewDataScrubbing).toHaveBeenCalledWith(
+      "acme",
+      { enabled: true, extra_fields: ["ssn", "phone"], safe_fields: [], rules: [] },
+      { sample: '{"phone":"+1 555 0100"}' }
+    );
+    expect(updateDataScrubbing).not.toHaveBeenCalled();
+  });
+
+  it("previews the draft against the latest stored event", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+    previewDataScrubbing.mockResolvedValue(phoneHidden);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Use latest event" }));
+
+    await screen.findByLabelText("Result");
+    expect(previewDataScrubbing).toHaveBeenCalledWith("acme", expect.objectContaining({ extra_fields: ["ssn"] }), { latest_event: true });
+  });
+
+  it("disables the latest event for a project with none", async () => {
+    getDataScrubbing.mockResolvedValue({ ...current, has_events: false });
+
+    renderPage();
+
+    expect(await screen.findByRole("button", { name: "Use latest event" })).toHaveProperty("disabled", true);
+    expect(screen.getByText("No events yet")).toBeTruthy();
+  });
+
+  it("explains an unparsable field list instead of previewing it", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+
+    renderPage();
+    fireEvent.change(await screen.findByLabelText("Safe fields"), { target: { value: "x".repeat(65) } });
+    fireEvent.click(screen.getByRole("button", { name: "Preview sample" }));
+
+    expect((await screen.findByRole("alert")).textContent).toContain("Safe fields");
+    expect(previewDataScrubbing).not.toHaveBeenCalled();
+  });
+
+  it("keeps the latest-event action after saving", async () => {
+    getDataScrubbing.mockResolvedValue(current);
+    updateDataScrubbing.mockImplementation(async (_slug, input) => input);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Save" }));
+    await screen.findByText("Saved.");
+
+    expect(screen.getByRole("button", { name: "Use latest event" })).toHaveProperty("disabled", false);
+    expect(screen.getByRole("list", { name: "Default sensitive field names" })).toBeTruthy();
   });
 });

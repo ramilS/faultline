@@ -238,6 +238,14 @@ func (*appDataScrubbingServiceStub) Get(context.Context, int64) (scrub.Config, e
 	return scrub.DefaultConfig(), nil
 }
 
+func (*appDataScrubbingServiceStub) HasEvents(context.Context, int64) (bool, error) {
+	return false, nil
+}
+
+func (*appDataScrubbingServiceStub) PreviewProject(context.Context, int64, scrub.ProjectPreviewInput) (scrub.Preview, error) {
+	return scrub.Preview{}, nil
+}
+
 func (*appDataScrubbingServiceStub) Update(_ context.Context, _ int64, config scrub.Config) (scrub.Config, error) {
 	return config, nil
 }
@@ -246,6 +254,10 @@ type appGlobalDataScrubbingServiceStub struct{}
 
 func (*appGlobalDataScrubbingServiceStub) GetGlobal(context.Context) ([]scrub.Rule, error) {
 	return nil, nil
+}
+
+func (*appGlobalDataScrubbingServiceStub) PreviewGlobal([]scrub.Rule, string) (scrub.Preview, error) {
+	return scrub.Preview{}, nil
 }
 
 func (*appGlobalDataScrubbingServiceStub) UpdateGlobal(_ context.Context, rules []scrub.Rule) ([]scrub.Rule, error) {

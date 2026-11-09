@@ -2,8 +2,12 @@ package scrub
 
 import (
 	"context"
+	"encoding/json"
+	"errors"
 	"fmt"
 )
+
+var ErrNoEvents = errors.New("project has no stored events")
 
 // Repository persists a project's scrubbing configuration.
 type Repository interface {
@@ -11,6 +15,15 @@ type Repository interface {
 	Update(ctx context.Context, projectID int64, config Config) error
 	GlobalRules(ctx context.Context) ([]Rule, error)
 	UpdateGlobalRules(ctx context.Context, rules []Rule) error
+	StoresUserIP(ctx context.Context, projectID int64) (bool, error)
+	HasEvents(ctx context.Context, projectID int64) (bool, error)
+	LatestEventPayload(ctx context.Context, projectID int64) (json.RawMessage, error)
+}
+
+type ProjectPreviewInput struct {
+	Draft       Config
+	LatestEvent bool
+	Sample      string
 }
 
 // Service validates configuration before it is stored.
@@ -61,4 +74,51 @@ func (s *Service) UpdateGlobal(ctx context.Context, rules []Rule) ([]Rule, error
 		return nil, fmt.Errorf("update global scrubbing rules: %w", err)
 	}
 	return normalized, nil
+}
+
+func (s *Service) HasEvents(ctx context.Context, projectID int64) (bool, error) {
+	exists, err := s.repository.HasEvents(ctx, projectID)
+	if err != nil {
+		return false, fmt.Errorf("find latest event: %w", err)
+	}
+	return exists, nil
+}
+
+func (s *Service) PreviewProject(ctx context.Context, projectID int64, input ProjectPreviewInput) (Preview, error) {
+	draft, err := input.Draft.Normalize()
+	if err != nil {
+		return Preview{}, err
+	}
+	global, err := s.repository.GlobalRules(ctx)
+	if err != nil {
+		return Preview{}, fmt.Errorf("preview data scrubbing: %w", err)
+	}
+	storesIP, err := s.repository.StoresUserIP(ctx, projectID)
+	if err != nil {
+		return Preview{}, fmt.Errorf("preview data scrubbing: %w", err)
+	}
+	scrubber, err := NewWithGlobal(draft, global)
+	if err != nil {
+		return Preview{}, err
+	}
+	if !input.LatestEvent {
+		return scrubber.PreviewSample(input.Sample, !storesIP)
+	}
+	payload, err := s.repository.LatestEventPayload(ctx, projectID)
+	if err != nil {
+		return Preview{}, fmt.Errorf("preview data scrubbing: %w", err)
+	}
+	return scrubber.PreviewPayload(payload, !storesIP)
+}
+
+func (s *Service) PreviewGlobal(draft []Rule, sample string) (Preview, error) {
+	rules, err := NormalizeRules(draft)
+	if err != nil {
+		return Preview{}, err
+	}
+	scrubber, err := NewWithGlobal(DefaultConfig(), rules)
+	if err != nil {
+		return Preview{}, err
+	}
+	return scrubber.PreviewSample(sample, false)
 }

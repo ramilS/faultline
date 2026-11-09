@@ -39,6 +39,10 @@ const (
 // separators; Luhn validation then decides whether it is really a card number.
 var cardPattern = regexp.MustCompile(`\b\d(?:[ -]?\d){12,18}\b`)
 
+func DefaultSensitiveNames() []string {
+	return slices.Clone(defaultSensitiveNames)
+}
+
 // ErrInvalidConfig marks a configuration that failed validation.
 var ErrInvalidConfig = errors.New("invalid data scrubbing configuration")
 
@@ -96,6 +100,7 @@ func normalizeFields(fields []string) ([]string, error) {
 // name lists are lowercased and the rules compiled at construction, not per
 // event.
 type Scrubber struct {
+	filtered  string
 	enabled   bool
 	sensitive []string
 	safe      []string
@@ -139,7 +144,7 @@ func newScrubber(config Config, global, project []compiledRule) *Scrubber {
 	for index, field := range config.SafeFields {
 		safe[index] = strings.ToLower(field)
 	}
-	return &Scrubber{enabled: config.Enabled, sensitive: sensitive, safe: safe, global: global, project: project}
+	return &Scrubber{filtered: Filtered, enabled: config.Enabled, sensitive: sensitive, safe: safe, global: global, project: project}
 }
 
 func compileRules(rules []Rule) ([]compiledRule, error) {
@@ -206,9 +211,9 @@ func (b *growthBudget) spend(before, after string) {
 	b.remaining = max(0, b.remaining-max(0, len(after)-len(before)))
 }
 
-func (b *growthBudget) failClosed(text string) (string, bool) {
-	b.spend(text, Filtered)
-	return Filtered, true
+func (b *growthBudget) failClosed(text, filtered string) (string, bool) {
+	b.spend(text, filtered)
+	return filtered, true
 }
 
 // applyRules rewrites every non-empty match of each rule. It reports overflow
@@ -314,7 +319,7 @@ func (s *Scrubber) Payload(payload json.RawMessage, redactIP bool) (json.RawMess
 	if tree, ok := root.(map[string]any); ok && redactIP && s.enabled {
 		if user, ok := tree["user"].(map[string]any); ok {
 			if _, present := user["ip_address"]; present {
-				user["ip_address"] = Filtered
+				user["ip_address"] = s.filtered
 				changed = true
 			}
 		}
@@ -349,7 +354,7 @@ func (s *Scrubber) walk(value any, redactIP bool, budget *growthBudget) (any, bo
 		changed := false
 		for key, child := range typed {
 			if s.redacts(key, redactIP) {
-				typed[key] = Filtered
+				typed[key] = s.filtered
 				changed = true
 				continue
 			}
@@ -360,7 +365,7 @@ func (s *Scrubber) walk(value any, redactIP bool, budget *growthBudget) (any, bo
 		return typed, changed
 	case []any:
 		if key, secret, ok := headerPair(typed); ok && s.redacts(key, redactIP) && secret != Filtered {
-			typed[1] = Filtered
+			typed[1] = s.filtered
 			return typed, true
 		}
 		changed := false
@@ -394,7 +399,7 @@ func (s *Scrubber) scrubText(text string, budget *growthBudget) (string, bool) {
 	limit := budget.limitFor(text)
 	scrubbed, globalChanged, overflow := applyRules(text, s.global, limit)
 	if overflow {
-		return budget.failClosed(text)
+		return budget.failClosed(text, s.filtered)
 	}
 	if !s.enabled {
 		budget.spend(text, scrubbed)
@@ -402,11 +407,11 @@ func (s *Scrubber) scrubText(text string, budget *growthBudget) (string, bool) {
 	}
 	scrubbed, projectChanged, overflow := applyRules(scrubbed, s.project, limit)
 	if overflow {
-		return budget.failClosed(text)
+		return budget.failClosed(text, s.filtered)
 	}
 	budget.spend(text, scrubbed)
-	scrubbed, cardsChanged := scrubCards(scrubbed)
-	scrubbed, bearerChanged := scrubBearerTokens(scrubbed)
+	scrubbed, cardsChanged := scrubCards(scrubbed, s.filtered)
+	scrubbed, bearerChanged := scrubBearerTokens(scrubbed, s.filtered)
 	scrubbed, pairsChanged := s.scrubSecretPairs(scrubbed)
 	return scrubbed, globalChanged || projectChanged || cardsChanged || bearerChanged || pairsChanged
 }
@@ -415,11 +420,11 @@ func (s *Scrubber) scrubText(text string, budget *growthBudget) (string, bool) {
 // characters so prose such as "invalid Bearer token" is left alone.
 var bearerPattern = regexp.MustCompile(`(?i)\b(bearer\s+)[A-Za-z0-9._~+/=-]{16,}`)
 
-func scrubBearerTokens(text string) (string, bool) {
+func scrubBearerTokens(text, filtered string) (string, bool) {
 	if !strings.Contains(strings.ToLower(text), "bearer") {
 		return text, false
 	}
-	scrubbed := bearerPattern.ReplaceAllString(text, "${1}"+Filtered)
+	scrubbed := bearerPattern.ReplaceAllString(text, "${1}"+filtered)
 	return scrubbed, scrubbed != text
 }
 
@@ -439,15 +444,15 @@ func (s *Scrubber) scrubSecretPairs(text string) (string, bool) {
 			return pair
 		}
 		changed = true
-		return name + "=" + Filtered
+		return name + "=" + s.filtered
 	})
 	return scrubbed, changed
 }
 
-func scrubCards(text string) (string, bool) {
+func scrubCards(text, filtered string) (string, bool) {
 	changed := false
 	scrubbed := cardPattern.ReplaceAllStringFunc(text, func(candidate string) string {
-		redacted, found := redactLeadingCard(candidate)
+		redacted, found := redactLeadingCard(candidate, filtered)
 		changed = changed || found
 		return redacted
 	})
@@ -458,7 +463,7 @@ func scrubCards(text string) (string, bool) {
 // candidate. The pattern is greedy, so a card followed by a space and a CVV
 // arrives as one over-long run that fails Luhn as a whole while its leading
 // digits are a real card number.
-func redactLeadingCard(candidate string) (string, bool) {
+func redactLeadingCard(candidate, filtered string) (string, bool) {
 	var ends []int
 	for index := range len(candidate) {
 		if candidate[index] >= '0' && candidate[index] <= '9' {
@@ -468,7 +473,7 @@ func redactLeadingCard(candidate string) (string, bool) {
 	for digits := min(len(ends), maxCardDigits); digits >= minCardDigits; digits-- {
 		end := ends[digits-1]
 		if luhnValid(candidate[:end]) {
-			return Filtered + candidate[end:], true
+			return filtered + candidate[end:], true
 		}
 	}
 	return candidate, false

@@ -1,7 +1,8 @@
 import { useCallback, useState, type FormEvent } from "react";
-import { Navigate, useParams } from "react-router-dom";
+import { Link, Navigate, useParams } from "react-router-dom";
 
-import type { DataScrubbing } from "@/api";
+import type { DataScrubbing, DataScrubbingView, ScrubPreviewSource, ScrubRule } from "@/api";
+import { INSTANCE_SCRUBBING_LABEL } from "@/app/navItems";
 import { NotFoundPage } from "@/app/NotFoundPage";
 import { api } from "@/apiClient";
 import { ErrorState } from "@/components/ErrorState";
@@ -11,6 +12,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Label } from "@/components/ui/label";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useSession } from "@/features/auth/SessionProvider";
+import { DefaultProtection } from "@/features/settings/DefaultProtection";
 import { ScrubRulesEditor } from "@/features/settings/ScrubRulesEditor";
 import { formatFieldList, parseFieldList } from "@/features/settings/scrubFields";
 import { validateRules } from "@/features/settings/scrubRules";
@@ -28,7 +30,7 @@ function DataScrubbingScreen({ slug }: { slug: string }) {
   const { session } = useSession();
   useDocumentTitle(`Data scrubbing · ${useProjectName(slug)}`);
   const isOwner = session.state === "authenticated" && session.user.role === "owner";
-  const { state, reload, replace } = useAsyncResource<DataScrubbing>(
+  const { state, reload, replace } = useAsyncResource<DataScrubbingView>(
     useCallback(() => api.getDataScrubbing(slug), [slug])
   );
 
@@ -50,7 +52,15 @@ function DataScrubbingScreen({ slug }: { slug: string }) {
         {state.status === "loading" && <Skeleton className="h-48 w-full" />}
         {state.status === "failed" && <ErrorState message={state.message} onRetry={() => void reload()} />}
         {state.status === "ready" && (
-          <ScrubbingForm slug={slug} initial={state.value} editable={isOwner} onSaved={replace} />
+          <>
+            <DefaultProtection fields={state.value.default_fields} scope="project" />
+            <ScrubbingForm
+              slug={slug}
+              initial={state.value}
+              editable={isOwner}
+              onSaved={(stored) => replace({ ...state.value, ...stored })}
+            />
+          </>
         )}
       </div>
     </>
@@ -59,7 +69,7 @@ function DataScrubbingScreen({ slug }: { slug: string }) {
 
 interface ScrubbingFormProps {
   slug: string;
-  initial: DataScrubbing;
+  initial: DataScrubbingView;
   editable: boolean;
   onSaved: (saved: DataScrubbing) => void;
 }
@@ -76,12 +86,35 @@ function ScrubbingForm({ slug, initial, editable, onSaved }: ScrubbingFormProps)
     touch();
   };
 
+  const draft = (draftRules: ScrubRule[]): DataScrubbing | string => {
+    const extraFields = parseFieldList(extra);
+    if (!extraFields.ok) {
+      return `Additional sensitive fields: ${extraFields.error}`;
+    }
+    const safeFields = parseFieldList(safe);
+    if (!safeFields.ok) {
+      return `Safe fields: ${safeFields.error}`;
+    }
+    return { enabled, extra_fields: extraFields.fields, safe_fields: safeFields.fields, rules: draftRules };
+  };
+
+  const runPreview = async (draftRules: ScrubRule[], source: ScrubPreviewSource) => {
+    const config = draft(draftRules);
+    if (typeof config === "string") {
+      throw new Error(config);
+    }
+    return api.previewDataScrubbing(slug, config, source);
+  };
+
+  const addField = (name: string) => {
+    edit(setExtra)(extra.trim() === "" ? name : `${extra.trimEnd()}\n${name}`);
+  };
+
   const submit = async (event: FormEvent) => {
     event.preventDefault();
-    const extraFields = parseFieldList(extra);
-    const safeFields = parseFieldList(safe);
-    if (!extraFields.ok || !safeFields.ok) {
-      setError(!extraFields.ok ? `Additional sensitive fields: ${extraFields.error}` : `Safe fields: ${safeFields.ok ? "" : safeFields.error}`);
+    const config = draft(rules);
+    if (typeof config === "string") {
+      setError(config);
       return;
     }
     const invalidRules = validateRules(rules);
@@ -90,12 +123,7 @@ function ScrubbingForm({ slug, initial, editable, onSaved }: ScrubbingFormProps)
       return;
     }
     await save(async () => {
-      const stored = await api.updateDataScrubbing(slug, {
-        enabled,
-        extra_fields: extraFields.fields,
-        safe_fields: safeFields.fields,
-        rules
-      });
+      const stored = await api.updateDataScrubbing(slug, config);
       onSaved(stored);
     });
   };
@@ -112,10 +140,8 @@ function ScrubbingForm({ slug, initial, editable, onSaved }: ScrubbingFormProps)
         <div className="space-y-1">
           <Label htmlFor="scrub-enabled">Scrub sensitive data</Label>
           <p className="text-muted-foreground text-sm">
-            Values whose key contains password, secret, passwd, api_key, apikey, auth, credentials, mysql_pwd,
-            privatekey, private_key, token, bearer, cookie or api-key are replaced with [Filtered], as are card
-            numbers and the event&apos;s user.ip_address unless the project stores user IPs. Applies to events received
-            after the change, within about 30 seconds. Events already stored are not rewritten.
+            Applies the defaults above and the fields and rules below to events received after the change, within
+            about 30 seconds. Events already stored are not rewritten.
           </p>
         </div>
       </div>
@@ -137,10 +163,25 @@ function ScrubbingForm({ slug, initial, editable, onSaved }: ScrubbingFormProps)
         onChange={edit(setSafe)}
       />
 
-      <ScrubRulesEditor rules={rules} editable={editable} disabled={!enabled} onChange={edit(setRules)} />
+      <ScrubRulesEditor
+        rules={rules}
+        editable={editable}
+        disabled={!enabled}
+        onChange={edit(setRules)}
+        runPreview={runPreview}
+        onAddField={addField}
+        hasEvents={initial.has_events}
+      />
       <p className="text-muted-foreground text-sm">
-        Instance-wide rules set by an owner under Settings → Data scrubbing also apply to this project, even when
-        scrubbing is switched off here.
+        Instance-wide rules set by an owner under{" "}
+        {editable ? (
+          <Link to="/settings/data-scrubbing" className="underline underline-offset-4">
+            {INSTANCE_SCRUBBING_LABEL}
+          </Link>
+        ) : (
+          INSTANCE_SCRUBBING_LABEL
+        )}{" "}
+        also apply to this project, even when scrubbing is switched off here.
       </p>
 
       {error !== null && (

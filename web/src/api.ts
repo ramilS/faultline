@@ -349,6 +349,7 @@ export interface IssueChanges {
 
 export interface ScrubRule {
   name: string;
+  description?: string;
   pattern: string;
   replacement: string;
 }
@@ -360,9 +361,30 @@ export interface DataScrubbing {
   rules: ScrubRule[];
 }
 
+export interface DataScrubbingView extends DataScrubbing {
+  default_fields: string[];
+  has_events: boolean;
+}
+
 export interface GlobalScrubbing {
   rules: ScrubRule[];
 }
+
+export interface GlobalScrubbingView extends GlobalScrubbing {
+  default_fields: string[];
+}
+
+export interface ScrubPreviewSegment {
+  text: string;
+  redacted: boolean;
+}
+
+export interface ScrubPreview {
+  scrubbed: string;
+  segments: ScrubPreviewSegment[];
+}
+
+export type ScrubPreviewSource = { sample: string } | { latest_event: true };
 
 export type NotificationChannelKind = "telegram" | "webhook";
 
@@ -572,10 +594,12 @@ export interface FaultlineApi {
   getIssueStats(id: number, period: StatsPeriod): Promise<Bucket[]>;
   listIssueUsers(id: number): Promise<IssueUsersFacet>;
   getTimeline(eventId: string): Promise<Span[]>;
-  getDataScrubbing(slug: string): Promise<DataScrubbing>;
+  getDataScrubbing(slug: string): Promise<DataScrubbingView>;
   updateDataScrubbing(slug: string, input: DataScrubbing): Promise<DataScrubbing>;
-  getGlobalScrubbing(): Promise<GlobalScrubbing>;
+  previewDataScrubbing(slug: string, config: DataScrubbing, source: ScrubPreviewSource): Promise<ScrubPreview>;
+  getGlobalScrubbing(): Promise<GlobalScrubbingView>;
   updateGlobalScrubbing(input: GlobalScrubbing): Promise<GlobalScrubbing>;
+  previewGlobalScrubbing(rules: ScrubRule[], sample: string): Promise<ScrubPreview>;
   listNotificationChannels(slug: string): Promise<NotificationChannel[]>;
   createNotificationChannel(slug: string, input: NotificationChannelInput): Promise<NotificationChannel>;
   updateNotificationChannel(slug: string, channelId: number, input: NotificationChannelInput): Promise<NotificationChannel>;
@@ -766,16 +790,25 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
       return body.spans;
     },
     getDataScrubbing: async (slug) => {
-      return request<DataScrubbing>(fetchImpl, dataScrubbingPath(slug), { method: "GET" });
+      return request<DataScrubbingView>(fetchImpl, dataScrubbingPath(slug), { method: "GET" });
     },
     updateDataScrubbing: async (slug, input) => {
       return request<DataScrubbing>(fetchImpl, dataScrubbingPath(slug), { method: "PUT", json: input });
     },
+    previewDataScrubbing: async (slug, config, source) => {
+      return request<ScrubPreview>(fetchImpl, `${dataScrubbingPath(slug)}/preview`, {
+        method: "POST",
+        json: { config, ...source }
+      });
+    },
     getGlobalScrubbing: async () => {
-      return request<GlobalScrubbing>(fetchImpl, "/api/v1/settings/data-scrubbing", { method: "GET" });
+      return request<GlobalScrubbingView>(fetchImpl, globalScrubbingPath, { method: "GET" });
     },
     updateGlobalScrubbing: async (input) => {
-      return request<GlobalScrubbing>(fetchImpl, "/api/v1/settings/data-scrubbing", { method: "PUT", json: input });
+      return request<GlobalScrubbing>(fetchImpl, globalScrubbingPath, { method: "PUT", json: input });
+    },
+    previewGlobalScrubbing: async (rules, sample) => {
+      return request<ScrubPreview>(fetchImpl, `${globalScrubbingPath}/preview`, { method: "POST", json: { rules, sample } });
     },
     listGroupingRules: async (slug) => {
       const body = await request<{ rules: GroupingRule[] }>(fetchImpl, groupingRulesPath(slug), { method: "GET" });
@@ -924,6 +957,7 @@ async function errorMessage(response: Response): Promise<string> {
 }
 
 const usersPath = "/api/v1/users";
+const globalScrubbingPath = "/api/v1/settings/data-scrubbing";
 const groupsPath = "/api/v1/groups";
 
 function artifactTokensPath(slug: string): string {

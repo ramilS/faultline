@@ -208,3 +208,80 @@ func TestProjectSettingsStoreUpdateGlobalRulesFailsWhenTheSingletonRowIsMissing(
 		t.Fatal("UpdateGlobalRules succeeded with no instance_scrubbing row, want an error")
 	}
 }
+
+func TestProjectSettingsStoreFindsTheLatestEventToPreview(t *testing.T) {
+	databaseURL := testdatabase.StartTimescale(t)
+	ctx, cancel := context.WithTimeout(t.Context(), 2*time.Minute)
+	defer cancel()
+	if err := migrate.Run(databaseURL, migrate.Up, &bytes.Buffer{}); err != nil {
+		t.Fatalf("migrate up: %v", err)
+	}
+	pool, err := pgxpool.New(ctx, databaseURL)
+	if err != nil {
+		t.Fatalf("open pool: %v", err)
+	}
+	defer pool.Close()
+	projects := storagepostgres.NewProjectRepository(pool).Projects
+	created, err := projects.Create(ctx, project.CreateProject{Slug: "preview", Name: "Preview", Platform: project.PlatformOther})
+	if err != nil {
+		t.Fatalf("create project: %v", err)
+	}
+	other, err := projects.Create(ctx, project.CreateProject{Slug: "preview-other", Name: "Other", Platform: project.PlatformOther})
+	if err != nil {
+		t.Fatalf("create other project: %v", err)
+	}
+	store := storagepostgres.NewProjectSettingsStore(pool)
+
+	if has, err := store.HasEvents(ctx, created.ID); err != nil || has {
+		t.Fatalf("HasEvents before any event = %v, %v; want false", has, err)
+	}
+	if _, err := store.LatestEventPayload(ctx, created.ID); !errors.Is(err, scrub.ErrNoEvents) {
+		t.Fatalf("LatestEventPayload before any event = %v, want scrub.ErrNoEvents", err)
+	}
+
+	base := time.Date(2026, 11, 9, 12, 0, 0, 0, time.UTC)
+	seedPreviewEvent(ctx, t, pool, other.ID, "other", base.Add(time.Hour), `{"message":"other project"}`)
+	if has, err := store.HasEvents(ctx, created.ID); err != nil || has {
+		t.Fatalf("HasEvents with only another project's event = %v, %v; want false", has, err)
+	}
+	seedPreviewEvent(ctx, t, pool, created.ID, "older", base, `{"message":"older issue"}`)
+	seedPreviewEvent(ctx, t, pool, created.ID, "newer", base.Add(time.Minute), `{"message":"newer issue"}`)
+
+	if has, err := store.HasEvents(ctx, created.ID); err != nil || !has {
+		t.Fatalf("HasEvents = %v, %v; want true", has, err)
+	}
+	payload, err := store.LatestEventPayload(ctx, created.ID)
+	if err != nil || string(payload) != `{"message": "newer issue"}` {
+		t.Fatalf("LatestEventPayload = %s, %v; want the newer issue's event", payload, err)
+	}
+
+	if stores, err := store.StoresUserIP(ctx, created.ID); err != nil || stores {
+		t.Fatalf("StoresUserIP = %v, %v; want false by default", stores, err)
+	}
+	if _, err := pool.Exec(ctx, `UPDATE projects SET store_user_ip = true WHERE id = $1`, created.ID); err != nil {
+		t.Fatalf("opt in: %v", err)
+	}
+	if stores, err := store.StoresUserIP(ctx, created.ID); err != nil || !stores {
+		t.Fatalf("StoresUserIP after opt-in = %v, %v; want true", stores, err)
+	}
+	if _, err := store.StoresUserIP(ctx, other.ID+1000); !errors.Is(err, project.ErrNotFound) {
+		t.Fatalf("StoresUserIP of a missing project = %v, want project.ErrNotFound", err)
+	}
+}
+
+func seedPreviewEvent(ctx context.Context, t *testing.T, pool *pgxpool.Pool, projectID int64, fingerprint string, seen time.Time, payload string) {
+	t.Helper()
+	var issueID int64
+	if err := pool.QueryRow(ctx, `
+		INSERT INTO issues (project_id, fingerprint, title, first_seen, last_seen)
+		VALUES ($1, $2, $3, $4, $4) RETURNING id
+	`, projectID, fingerprint, fingerprint, seen).Scan(&issueID); err != nil {
+		t.Fatalf("insert issue: %v", err)
+	}
+	if _, err := pool.Exec(ctx, `
+		INSERT INTO events (project_id, issue_id, event_id, received_at, timestamp, level, message, payload)
+		VALUES ($1, $2, gen_random_uuid(), $3, $3, 'error', $4, $5::jsonb)
+	`, projectID, issueID, seen, fingerprint, payload); err != nil {
+		t.Fatalf("insert event: %v", err)
+	}
+}

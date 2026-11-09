@@ -185,6 +185,7 @@ func dataScrubbingRoutes(dependencies Dependencies) []route {
 	return []route{
 		{pattern: "GET /api/v1/projects/{slug}/data-scrubbing", gate: gateMember, handler: http.HandlerFunc(handler.Get)},
 		{pattern: "PUT /api/v1/projects/{slug}/data-scrubbing", gate: gateOwner, handler: http.HandlerFunc(handler.Update)},
+		{pattern: "POST /api/v1/projects/{slug}/data-scrubbing/preview", gate: gateOwner, handler: http.HandlerFunc(handler.Preview)},
 	}
 }
 
@@ -216,6 +217,7 @@ func globalDataScrubbingRoutes(dependencies Dependencies) []route {
 	return []route{
 		{pattern: "GET /api/v1/settings/data-scrubbing", gate: gateOwner, handler: http.HandlerFunc(handler.Get)},
 		{pattern: "PUT /api/v1/settings/data-scrubbing", gate: gateOwner, handler: http.HandlerFunc(handler.Update)},
+		{pattern: "POST /api/v1/settings/data-scrubbing/preview", gate: gateOwner, handler: http.HandlerFunc(handler.Preview)},
 	}
 }
 

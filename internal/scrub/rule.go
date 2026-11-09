@@ -17,7 +17,8 @@ const (
 	// MaxPatternBytes bounds a rule's regular expression source.
 	MaxPatternBytes = 512
 	// MaxReplacementBytes bounds a rule's replacement template.
-	MaxReplacementBytes = 128
+	MaxReplacementBytes     = 128
+	MaxRuleDescriptionBytes = 200
 	// MaxReplacementRefs bounds the group references in a replacement, since
 	// each one can copy a whole match.
 	MaxReplacementRefs = 8
@@ -29,6 +30,7 @@ const (
 // means Filtered.
 type Rule struct {
 	Name        string `json:"name"`
+	Description string `json:"description,omitempty"`
 	Pattern     string `json:"pattern"`
 	Replacement string `json:"replacement"`
 }
@@ -44,8 +46,8 @@ var groupReference = regexp.MustCompile(`\$(\$|\{([^}]*)\}|([\p{L}\p{Nd}_]+))`)
 // which Expand would copy as literal text, is refused as an unknown group.
 var groupNumber = regexp.MustCompile(`^\d+$`)
 
-// NormalizeRules validates rules and returns them with names trimmed, always as
-// a non-nil slice.
+// NormalizeRules validates rules and returns them with names and descriptions
+// trimmed, always as a non-nil slice.
 func NormalizeRules(rules []Rule) ([]Rule, error) {
 	if len(rules) > MaxRules {
 		return nil, fmt.Errorf("%w: rules: more than %d entries", ErrInvalidConfig, MaxRules)
@@ -53,6 +55,7 @@ func NormalizeRules(rules []Rule) ([]Rule, error) {
 	normalized := make([]Rule, 0, len(rules))
 	for index, rule := range rules {
 		rule.Name = strings.TrimSpace(rule.Name)
+		rule.Description = strings.TrimSpace(rule.Description)
 		if _, err := rule.compile(); err != nil {
 			return nil, fmt.Errorf("%w: rule %d: %w", ErrInvalidConfig, index+1, err)
 		}
@@ -76,6 +79,9 @@ func newCompiledRule(pattern *regexp.Regexp, replacement string, refs int) compi
 func (r Rule) compile() (compiledRule, error) {
 	if r.Name == "" || len(r.Name) > MaxRuleNameBytes {
 		return compiledRule{}, fmt.Errorf("name must be 1-%d bytes", MaxRuleNameBytes)
+	}
+	if len(r.Description) > MaxRuleDescriptionBytes {
+		return compiledRule{}, fmt.Errorf("description must be at most %d bytes", MaxRuleDescriptionBytes)
 	}
 	if r.Pattern == "" || len(r.Pattern) > MaxPatternBytes {
 		return compiledRule{}, fmt.Errorf("pattern must be 1-%d bytes", MaxPatternBytes)

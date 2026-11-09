@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net/http"
 	"net/http/httptest"
@@ -16,6 +17,7 @@ import (
 
 type stubDataScrubbingService struct {
 	config      scrub.Config
+	hasEvents   bool
 	err         error
 	updateCalls int
 	lastUpdate  struct {
@@ -26,6 +28,14 @@ type stubDataScrubbingService struct {
 
 func (s *stubDataScrubbingService) Get(context.Context, int64) (scrub.Config, error) {
 	return s.config, s.err
+}
+
+func (s *stubDataScrubbingService) HasEvents(context.Context, int64) (bool, error) {
+	return s.hasEvents, nil
+}
+
+func (s *stubDataScrubbingService) PreviewProject(context.Context, int64, scrub.ProjectPreviewInput) (scrub.Preview, error) {
+	return scrub.Preview{}, s.err
 }
 
 func (s *stubDataScrubbingService) Update(_ context.Context, projectID int64, config scrub.Config) (scrub.Config, error) {
@@ -48,14 +58,16 @@ func dataScrubbingRequest(method, body string) *http.Request {
 	return request.WithContext(access.ContextWithScope(request.Context(), access.Unrestricted()))
 }
 
+const defaultFieldsJSON = `"default_fields":["password","secret","passwd","api_key","apikey","auth","credentials","mysql_pwd","privatekey","private_key","token","bearer","cookie","api-key"]`
+
 func TestGetDataScrubbingReturnsTheConfigWithEmptyListsAsArrays(t *testing.T) {
 	var reported errorRecorder
-	handler := newDataScrubbingHandler(&stubDataScrubbingService{config: scrub.Config{Enabled: true}}, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
+	handler := newDataScrubbingHandler(&stubDataScrubbingService{config: scrub.Config{Enabled: true}, hasEvents: true}, &stubGroupingRuleProjects{project: project.Project{ID: 5}}, &reported)
 
 	recorder := httptest.NewRecorder()
 	handler.Get(recorder, dataScrubbingRequest(http.MethodGet, ""))
 
-	want := `{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]}`
+	want := `{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[],` + defaultFieldsJSON + `,"has_events":true}`
 	if recorder.Code != http.StatusOK || strings.TrimSpace(recorder.Body.String()) != want {
 		t.Fatalf("response = %d %s, want %s", recorder.Code, recorder.Body.String(), want)
 	}
@@ -211,5 +223,99 @@ func TestUpdateDataScrubbingPassesRulesToTheService(t *testing.T) {
 	}
 	if !strings.Contains(recorder.Body.String(), `"rules":[{"name":"Telegram"`) {
 		t.Fatalf("body = %s, want the rules echoed", recorder.Body.String())
+	}
+}
+
+func previewHandler(repository *recordingScrubbingRepository, reported *errorRecorder) *DataScrubbingHandler {
+	return newDataScrubbingHandler(scrub.NewService(repository), &stubGroupingRuleProjects{project: project.Project{ID: 5}}, reported)
+}
+
+func TestPreviewDataScrubbingHidesAFieldAddedByNameWithoutStoringIt(t *testing.T) {
+	var reported errorRecorder
+	repository := &recordingScrubbingRepository{}
+
+	recorder := httptest.NewRecorder()
+	previewHandler(repository, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost,
+		`{"config":{"enabled":true,"extra_fields":["phone"],"safe_fields":[],"rules":[]},"sample":"{\"phone\":\"+1 555 0100\"}"}`))
+
+	want := `{"scrubbed":"{\n  \"phone\": \"[Filtered]\"\n}","segments":[{"text":"{\n  \"phone\": \"","redacted":false},{"text":"[Filtered]","redacted":true},{"text":"\"\n}","redacted":false}]}`
+	if recorder.Code != http.StatusOK || strings.TrimSpace(recorder.Body.String()) != want {
+		t.Fatalf("response = %d %s, want 200 %s", recorder.Code, recorder.Body.String(), want)
+	}
+	if repository.writes != 0 || reported.err != nil {
+		t.Fatalf("writes = %d, reported = %v; want neither", repository.writes, reported.err)
+	}
+}
+
+func TestPreviewDataScrubbingHighlightsAPresetRule(t *testing.T) {
+	var reported errorRecorder
+	body := `{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[{"name":"Slack token","description":"Bot tokens.","pattern":"\\bxox[abeoprs]-[0-9A-Za-z-]{10,}","replacement":""}]},"sample":"posted with xoxb-EXAMPLE-TOKEN"}`
+
+	recorder := httptest.NewRecorder()
+	previewHandler(&recordingScrubbingRepository{}, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost, body))
+
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `{"text":"[Filtered]","redacted":true}`) {
+		t.Fatalf("response = %d %s, want the token highlighted", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPreviewDataScrubbingReturnsTheRE2ErrorAndStoresNothing(t *testing.T) {
+	var reported errorRecorder
+	repository := &recordingScrubbingRepository{}
+
+	recorder := httptest.NewRecorder()
+	previewHandler(repository, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost,
+		`{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],`+lookaheadRules+`},"sample":"ab"}`))
+
+	if recorder.Code != http.StatusBadRequest || !strings.Contains(recorder.Body.String(), "RE2") {
+		t.Fatalf("response = %d %s, want 400 naming RE2", recorder.Code, recorder.Body.String())
+	}
+	if repository.writes != 0 || reported.err != nil {
+		t.Fatalf("writes = %d, reported = %v; want neither", repository.writes, reported.err)
+	}
+}
+
+func TestPreviewDataScrubbingRunsOnTheLatestEvent(t *testing.T) {
+	var reported errorRecorder
+	repository := &recordingScrubbingRepository{latestEvent: json.RawMessage(`{"message":"pin-1234","level":"error"}`)}
+	body := `{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[{"name":"pin","pattern":"pin-\\d+","replacement":""}]},"latest_event":true}`
+
+	recorder := httptest.NewRecorder()
+	previewHandler(repository, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost, body))
+
+	if recorder.Code != http.StatusOK || !strings.Contains(recorder.Body.String(), `"scrubbed":"{\n  \"level\": \"error\",\n  \"message\": \"[Filtered]\"\n}"`) {
+		t.Fatalf("response = %d %s, want the latest event scrubbed", recorder.Code, recorder.Body.String())
+	}
+}
+
+func TestPreviewDataScrubbingSaysWhenNoEventIsStored(t *testing.T) {
+	var reported errorRecorder
+
+	recorder := httptest.NewRecorder()
+	previewHandler(&recordingScrubbingRepository{}, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost,
+		`{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]},"latest_event":true}`))
+
+	if recorder.Code != http.StatusNotFound || strings.TrimSpace(recorder.Body.String()) != `{"error":"No events yet"}` || reported.err != nil {
+		t.Fatalf("response = %d %s, reported = %v; want 404 No events yet", recorder.Code, recorder.Body.String(), reported.err)
+	}
+}
+
+func TestPreviewDataScrubbingRejectsBadRequests(t *testing.T) {
+	for name, body := range map[string]string{
+		"no config":         `{"sample":"x"}`,
+		"incomplete config": `{"config":{"enabled":true,"extra_fields":[],"safe_fields":[]},"sample":"x"}`,
+		"unknown field":     `{"config":{"enabled":true,"extra_fields":[],"safe_fields":[],"rules":[]},"text":"x"}`,
+		"not json":          `nope`,
+	} {
+		t.Run(name, func(t *testing.T) {
+			var reported errorRecorder
+
+			recorder := httptest.NewRecorder()
+			previewHandler(&recordingScrubbingRepository{}, &reported).Preview(recorder, dataScrubbingRequest(http.MethodPost, body))
+
+			if recorder.Code != http.StatusBadRequest {
+				t.Fatalf("response = %d %s, want 400", recorder.Code, recorder.Body.String())
+			}
+		})
 	}
 }

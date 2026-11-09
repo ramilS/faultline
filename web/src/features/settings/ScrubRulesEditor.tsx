@@ -5,28 +5,29 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 
+import { AddScrubRuleDialog } from "./AddScrubRuleDialog";
 import {
-  MAX_SAMPLE_LENGTH,
   MAX_SCRUB_RULES,
   MAX_SCRUB_RULE_NAME_BYTES,
   MAX_SCRUB_RULE_PATTERN_BYTES,
-  MAX_SCRUB_RULE_REPLACEMENT_BYTES,
-  previewRules,
-  SCRUB_PRESETS
+  MAX_SCRUB_RULE_REPLACEMENT_BYTES
 } from "./scrubRules";
+import { ScrubPreviewPanel, type RunScrubPreview } from "./ScrubPreviewPanel";
 
 interface ScrubRulesEditorProps {
   rules: ScrubRule[];
   editable: boolean;
   disabled: boolean;
   onChange: (rules: ScrubRule[]) => void;
+  runPreview: RunScrubPreview;
+  onAddField?: (name: string) => void;
+  hasEvents?: boolean;
 }
 
-export function ScrubRulesEditor({ rules, editable, disabled, onChange }: ScrubRulesEditorProps) {
-  const [sample, setSample] = useState("");
+export function ScrubRulesEditor({ rules, editable, disabled, onChange, runPreview, onAddField, hasEvents }: ScrubRulesEditorProps) {
+  const [adding, setAdding] = useState(false);
   const locked = !editable || disabled;
   const atLimit = rules.length >= MAX_SCRUB_RULES;
-  const preview = previewRules(rules, sample);
 
   const update = (index: number, field: keyof ScrubRule, value: string) =>
     onChange(rules.map((rule, position) => (position === index ? { ...rule, [field]: value } : rule)));
@@ -36,11 +37,16 @@ export function ScrubRulesEditor({ rules, editable, disabled, onChange }: ScrubR
       <div className="space-y-1">
         <h2 className="text-base font-medium">Custom rules</h2>
         <p className="text-muted-foreground text-sm">
-          Regular expression (RE2, no lookahead) replaced in every string of an event, including URLs and breadcrumbs.
-          In the replacement {"${1}"} is the first group and $$ a literal dollar sign; empty means [Filtered]. Applies
-          to events received after the change.
+          Each rule replaces what its pattern matches in every string of an event, including URLs and breadcrumbs.
+          Applies to events received after the change.
         </p>
       </div>
+
+      {rules.length === 0 && (
+        <p className="text-muted-foreground rounded-md border border-dashed p-3 text-sm">
+          No custom rules. The defaults above still apply.
+        </p>
+      )}
 
       {rules.map((rule, index) => {
         const number = index + 1;
@@ -81,6 +87,9 @@ export function ScrubRulesEditor({ rules, editable, disabled, onChange }: ScrubR
                 />
               </div>
             </div>
+            {rule.description !== undefined && rule.description !== "" && (
+              <p className="text-muted-foreground text-sm">{rule.description}</p>
+            )}
             <Button
               type="button"
               variant="ghost"
@@ -95,52 +104,31 @@ export function ScrubRulesEditor({ rules, editable, disabled, onChange }: ScrubR
       })}
 
       {editable && (
-        <div className="flex flex-wrap gap-2">
-          <Button
-            type="button"
-            variant="outline"
-            disabled={locked || atLimit}
-            onClick={() => onChange([...rules, { name: "", pattern: "", replacement: "" }])}
-          >
+        <div className="space-y-1">
+          <Button type="button" variant="outline" disabled={locked || atLimit} onClick={() => setAdding(true)}>
             Add rule
           </Button>
-          {SCRUB_PRESETS.map((preset) => (
-            <Button
-              key={preset.label}
-              type="button"
-              variant="outline"
-              disabled={locked || atLimit}
-              onClick={() => onChange([...rules, preset.rule])}
-            >
-              Add {preset.label}
-            </Button>
-          ))}
+          {atLimit && (
+            <p className="text-muted-foreground text-sm">
+              The limit of {MAX_SCRUB_RULES} rules is reached. Remove a rule to add another.
+            </p>
+          )}
         </div>
       )}
 
-      <div className="space-y-2">
-        <Label htmlFor="scrub-sample">Test against sample text</Label>
-        <textarea
-          id="scrub-sample"
-          value={sample}
-          rows={3}
-          maxLength={MAX_SAMPLE_LENGTH}
-          disabled={locked}
-          onChange={(event) => setSample(event.target.value)}
-          className="border-input bg-background focus-visible:ring-ring/50 w-full rounded-md border px-3 py-2 font-mono text-sm shadow-xs outline-none focus-visible:ring-[3px] disabled:cursor-not-allowed disabled:opacity-50"
-        />
-        <p className="text-muted-foreground text-sm">Preview runs in your browser; the server (RE2) decides on save.</p>
-        {preview.errors.length > 0 && (
-          <div role="alert" className="text-destructive space-y-1 text-sm">
-            {preview.errors.map((error, position) => (
-              <p key={position}>{error}</p>
-            ))}
-          </div>
-        )}
-        <output aria-label="Result" className="block font-mono text-sm break-all whitespace-pre-wrap">
-          {preview.output}
-        </output>
-      </div>
+      {editable && (
+        <>
+          <ScrubPreviewPanel rules={rules} runPreview={runPreview} hasEvents={hasEvents} />
+          <AddScrubRuleDialog
+            open={adding}
+            rules={rules}
+            runPreview={runPreview}
+            onClose={() => setAdding(false)}
+            onAddRule={(rule) => onChange([...rules, rule])}
+            onAddField={onAddField}
+          />
+        </>
+      )}
     </section>
   );
 }
