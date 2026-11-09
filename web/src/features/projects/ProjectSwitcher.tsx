@@ -10,6 +10,16 @@ import { useProjects } from "@/features/projects/ProjectsProvider";
 import { projectSlugFromPath } from "@/lib/projectSlug";
 import { cn } from "@/lib/utils";
 
+function namesUsedMoreThanOnce(projects: readonly { readonly name: string }[]): ReadonlySet<string> {
+  const seen = new Set<string>();
+  const shared = new Set<string>();
+  for (const { name } of projects) {
+    if (seen.has(name)) shared.add(name);
+    seen.add(name);
+  }
+  return shared;
+}
+
 export function ProjectSwitcher() {
   const { state } = useProjects();
   const slug = projectSlugFromPath(useLocation().pathname);
@@ -18,6 +28,7 @@ export function ProjectSwitcher() {
 
   const projects = state.status === "ready" ? state.projects : [];
   const active = projects.find((project) => project.slug === slug);
+  const sharedNames = namesUsedMoreThanOnce(projects);
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -52,8 +63,11 @@ export function ProjectSwitcher() {
                   }}
                 >
                   <Check className={cn("size-4", project.slug === slug ? "opacity-100" : "opacity-0")} />
-                  <ProjectIdentity project={project} /><span className="truncate">{project.name}</span>
-                  <span className="text-muted-foreground ml-auto font-mono text-xs">{project.slug}</span>
+                  <ProjectIdentity project={project} />
+                  <span className="truncate">{project.name}</span>
+                  {sharedNames.has(project.name) && (
+                    <span className="text-muted-foreground ml-auto font-mono text-xs">{project.slug}</span>
+                  )}
                 </CommandItem>
               ))}
             </CommandGroup>

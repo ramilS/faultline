@@ -35,7 +35,6 @@ export function AllIssuesPage() {
 
 /** `slug` null is the every-project stream; otherwise one project's. */
 function IssueStreamView({ slug }: { slug: string | null }) {
-  useDocumentTitle(slug === null ? "All issues" : `Issues · ${slug}`);
   const controls = useUrlFilters();
   const { filters } = controls;
   const { state: projects } = useProjects();
@@ -44,6 +43,7 @@ function IssueStreamView({ slug }: { slug: string | null }) {
       new Map(projects.status === "ready" ? projects.projects.map((project) => [project.slug, project.name]) : []),
     [projects]
   );
+  useDocumentTitle(slug === null ? "All issues" : `Issues · ${projectNames.get(slug) ?? slug}`);
   const { phase, stream, loadingMore, loadMoreError, loadMore, reload, applyUpdates } = useIssueStream(
     slug,
     filters

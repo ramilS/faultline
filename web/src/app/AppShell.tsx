@@ -45,12 +45,11 @@ export function AppShell() {
   // A path segment is not proof a project exists: /nonexistent-route parses as
   // a slug and would otherwise render Issues and settings links for nothing.
   // Scoped navigation waits until the project list confirms the slug.
-  const slug =
-    candidateSlug !== null &&
-    projects.status === "ready" &&
-    projects.projects.some((project) => project.slug === candidateSlug)
-      ? candidateSlug
-      : null;
+  const project =
+    candidateSlug !== null && projects.status === "ready"
+      ? projects.projects.find((candidate) => candidate.slug === candidateSlug)
+      : undefined;
+  const slug = project?.slug ?? null;
 
   const scoped = slug === null || session.state !== "authenticated" ? [] : projectNavItems(slug, session.user.role);
   const global = session.state === "authenticated" ? globalNavItems(session.user.role) : [];
@@ -75,9 +74,7 @@ export function AppShell() {
           <NavLinks items={global} />
           {scoped.length > 0 && (
             <>
-              <p className="text-muted-foreground mt-4 mb-1 truncate px-2.5 text-xs font-medium tracking-wide uppercase">
-                {slug}
-              </p>
+              <p className="text-muted-foreground mt-4 mb-1 truncate px-2.5 text-xs font-medium">{project?.name}</p>
               <NavLinks items={scoped} />
             </>
           )}
