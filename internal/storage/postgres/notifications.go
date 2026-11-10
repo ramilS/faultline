@@ -14,7 +14,7 @@ import (
 )
 
 const notificationChannelColumns = `
-	id, project_id, name, kind, target, secret <> '', enabled, notify_new, notify_regression,
+	id, project_id, name, kind, target, secret <> '', proxy_url, enabled, notify_new, notify_regression,
 	environments, min_level, last_success_at, COALESCE(last_error, ''), last_error_at, created_at`
 
 type notificationChannelRepository struct {
@@ -60,7 +60,8 @@ func (repository *notificationChannelRepository) Get(ctx context.Context, projec
 	if err != nil {
 		return notify.Channel{}, notify.Destination{}, fmt.Errorf("get notification channel: %w", err)
 	}
-	return channel, notify.Destination{Kind: channel.Kind, Target: channel.Target, Secret: secret}, nil
+	destination := notify.Destination{Kind: channel.Kind, Target: channel.Target, Secret: secret, Proxy: channel.Proxy}
+	return redactChannel(channel), destination, nil
 }
 
 // Create locks the project row before counting so two concurrent creates
@@ -88,16 +89,13 @@ func (repository *notificationChannelRepository) Create(ctx context.Context, pro
 		return notify.Channel{}, notify.ErrTooManyChannels
 	}
 
-	secret := ""
-	if input.Secret != nil {
-		secret = *input.Secret
-	}
 	var channel notify.Channel
 	err = tx.QueryRow(ctx, `
-		INSERT INTO notification_channels (project_id, name, kind, target, secret, enabled, notify_new, notify_regression, environments, min_level)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		INSERT INTO notification_channels (project_id, name, kind, target, secret, proxy_url, enabled, notify_new, notify_regression, environments, min_level)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)
 		RETURNING `+notificationChannelColumns,
-		projectID, input.Name, string(input.Kind), input.Target, secret, input.Enabled, input.NotifyNew, input.NotifyRegression, input.Environments, input.MinLevel,
+		projectID, input.Name, string(input.Kind), input.Target, valueOrEmpty(input.Secret), valueOrEmpty(input.Proxy),
+		input.Enabled, input.NotifyNew, input.NotifyRegression, input.Environments, input.MinLevel,
 	).Scan(notificationChannelTargets(&channel)...)
 	if err != nil {
 		return notify.Channel{}, fmt.Errorf("insert notification channel: %w", err)
@@ -105,7 +103,7 @@ func (repository *notificationChannelRepository) Create(ctx context.Context, pro
 	if err := tx.Commit(ctx); err != nil {
 		return notify.Channel{}, fmt.Errorf("commit notification channel: %w", err)
 	}
-	return channel, nil
+	return redactChannel(channel), nil
 }
 
 // Update also clears the channel's last error: it described the previous
@@ -114,12 +112,13 @@ func (repository *notificationChannelRepository) Update(ctx context.Context, pro
 	var channel notify.Channel
 	err := repository.pool.QueryRow(ctx, `
 		UPDATE notification_channels SET
-			name = $3, target = $4, secret = COALESCE($5, secret), enabled = $6,
-			notify_new = $7, notify_regression = $8, environments = $9, min_level = $10,
+			name = $3, target = $4, secret = COALESCE($5, secret), proxy_url = COALESCE($6, proxy_url), enabled = $7,
+			notify_new = $8, notify_regression = $9, environments = $10, min_level = $11,
 			last_error = NULL, last_error_at = NULL
 		WHERE project_id = $1 AND id = $2
 		RETURNING `+notificationChannelColumns,
-		projectID, channelID, input.Name, input.Target, input.Secret, input.Enabled, input.NotifyNew, input.NotifyRegression, input.Environments, input.MinLevel,
+		projectID, channelID, input.Name, input.Target, input.Secret, input.Proxy,
+		input.Enabled, input.NotifyNew, input.NotifyRegression, input.Environments, input.MinLevel,
 	).Scan(notificationChannelTargets(&channel)...)
 	if errors.Is(err, pgx.ErrNoRows) {
 		return notify.Channel{}, notify.ErrChannelNotFound
@@ -127,7 +126,7 @@ func (repository *notificationChannelRepository) Update(ctx context.Context, pro
 	if err != nil {
 		return notify.Channel{}, fmt.Errorf("update notification channel: %w", err)
 	}
-	return channel, nil
+	return redactChannel(channel), nil
 }
 
 func (repository *notificationChannelRepository) Delete(ctx context.Context, projectID, channelID int64) error {
@@ -143,7 +142,7 @@ func (repository *notificationChannelRepository) Delete(ctx context.Context, pro
 
 func notificationChannelTargets(channel *notify.Channel) []any {
 	return []any{
-		&channel.ID, &channel.ProjectID, &channel.Name, &channel.Kind, &channel.Target, &channel.HasSecret,
+		&channel.ID, &channel.ProjectID, &channel.Name, &channel.Kind, &channel.Target, &channel.HasSecret, &channel.Proxy,
 		&channel.Enabled, &channel.NotifyNew, &channel.NotifyRegression, &channel.Environments, &channel.MinLevel,
 		&channel.LastSuccessAt, &channel.LastError, &channel.LastErrorAt, &channel.CreatedAt,
 	}
@@ -154,7 +153,21 @@ func scanNotificationChannel(rows pgx.Rows) (notify.Channel, error) {
 	if err := rows.Scan(notificationChannelTargets(&channel)...); err != nil {
 		return notify.Channel{}, fmt.Errorf("scan notification channel: %w", err)
 	}
-	return channel, nil
+	return redactChannel(channel), nil
+}
+
+// redactChannel masks the proxy password that notificationChannelTargets
+// scanned into Channel.Proxy.
+func redactChannel(channel notify.Channel) notify.Channel {
+	channel.Proxy = notify.RedactedProxy(channel.Proxy)
+	return channel
+}
+
+func valueOrEmpty(value *string) string {
+	if value == nil {
+		return ""
+	}
+	return *value
 }
 
 type notificationQueue struct {
@@ -196,7 +209,7 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 			RETURNING d.id, d.channel_id, d.issue_id, d.trigger, d.environment, d.event_id, d.attempts
 		)
 		SELECT claimed.id, claimed.channel_id, claimed.attempts, claimed.trigger, claimed.environment, COALESCE(claimed.event_id::text, ''),
-		       c.kind, c.target, c.secret, p.slug, p.name, p.icon_emoji, i.id, i.title, i.culprit, i.display_title, i.display_culprit, i.level
+		       c.kind, c.target, c.secret, c.proxy_url, p.slug, p.name, p.icon_emoji, i.id, i.title, i.culprit, i.display_title, i.display_culprit, i.level
 		FROM claimed
 		JOIN notification_channels c ON c.id = claimed.channel_id
 		JOIN projects p ON p.id = c.project_id
@@ -214,7 +227,7 @@ func (queue *notificationQueue) Claim(ctx context.Context, now time.Time, limit 
 		n := &delivery.Notification
 		d := &delivery.Destination
 		if err := rows.Scan(&delivery.ID, &delivery.ChannelID, &delivery.Attempts, &n.Trigger, &n.Environment, &n.EventID,
-			&d.Kind, &d.Target, &d.Secret, &n.ProjectSlug, &n.ProjectName, &n.ProjectEmoji, &n.IssueID, &n.Title, &n.Culprit, &n.DisplayTitle, &n.DisplayCulprit, &n.Level); err != nil {
+			&d.Kind, &d.Target, &d.Secret, &d.Proxy, &n.ProjectSlug, &n.ProjectName, &n.ProjectEmoji, &n.IssueID, &n.Title, &n.Culprit, &n.DisplayTitle, &n.DisplayCulprit, &n.Level); err != nil {
 			return nil, fmt.Errorf("scan notification delivery: %w", err)
 		}
 		deliveries = append(deliveries, delivery)

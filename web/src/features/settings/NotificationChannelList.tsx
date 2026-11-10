@@ -42,6 +42,11 @@ export function NotificationChannelList({ channels, testingId, onTest, onEdit, o
               <code className="text-muted-foreground block truncate font-mono text-xs" title={channel.target}>
                 {channel.target}
               </code>
+              {channel.proxy !== null && (
+                <code className="text-muted-foreground block truncate font-mono text-xs" title={channel.proxy}>
+                  via {channel.proxy}
+                </code>
+              )}
             </TableCell>
             <TableCell className="text-muted-foreground text-xs">{describeFilters(channel)}</TableCell>
             <TableCell className="max-w-0 text-xs">

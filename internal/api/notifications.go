@@ -48,6 +48,7 @@ type notificationChannelResponse struct {
 	Kind             string     `json:"kind"`
 	Target           string     `json:"target"`
 	HasSecret        bool       `json:"has_secret"`
+	Proxy            *string    `json:"proxy"`
 	Enabled          bool       `json:"enabled"`
 	NotifyNew        bool       `json:"notify_new"`
 	NotifyRegression bool       `json:"notify_regression"`
@@ -65,13 +66,15 @@ type notificationChannelsResponse struct {
 
 // notificationChannelRequest serves create and update. Pointers and a
 // nil-able slice make an omitted field distinguishable from false or empty,
-// so a partial body is refused instead of switching a filter off. Secret
-// stays optional: on update, omitting it keeps the stored one.
+// so a partial body is refused instead of switching a filter off. Secret and
+// Proxy stay optional: on update, omitting one keeps the stored value, and an
+// empty proxy removes it.
 type notificationChannelRequest struct {
 	Name             string   `json:"name"`
 	Kind             string   `json:"kind"`
 	Target           string   `json:"target"`
 	Secret           *string  `json:"secret"`
+	Proxy            *string  `json:"proxy"`
 	Enabled          *bool    `json:"enabled"`
 	NotifyNew        *bool    `json:"notify_new"`
 	NotifyRegression *bool    `json:"notify_regression"`
@@ -89,6 +92,7 @@ func (r notificationChannelRequest) input() notify.ChannelInput {
 		Kind:             notify.Kind(r.Kind),
 		Target:           r.Target,
 		Secret:           r.Secret,
+		Proxy:            r.Proxy,
 		Enabled:          *r.Enabled,
 		NotifyNew:        *r.NotifyNew,
 		NotifyRegression: *r.NotifyRegression,
@@ -259,6 +263,9 @@ func toNotificationChannelResponse(channel notify.Channel) notificationChannelRe
 	}
 	if channel.LastError != "" {
 		response.LastError = &channel.LastError
+	}
+	if channel.Proxy != "" {
+		response.Proxy = &channel.Proxy
 	}
 	if response.Environments == nil {
 		response.Environments = []string{}

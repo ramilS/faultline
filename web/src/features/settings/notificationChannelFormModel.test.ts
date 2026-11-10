@@ -18,6 +18,7 @@ const stored: NotificationChannel = {
   kind: "telegram",
   target: "-100",
   has_secret: true,
+  proxy: "socks5://bot:xxxxx@proxy.example.com:1080",
   enabled: true,
   notify_new: true,
   notify_regression: false,
@@ -39,6 +40,8 @@ test("editing starts from the stored channel with a blank secret", () => {
     kind: "telegram",
     target: "-100",
     secret: "",
+    proxy: "",
+    removeProxy: false,
     enabled: true,
     notifyNew: true,
     notifyRegression: false,
@@ -75,11 +78,28 @@ test("toChannelInput trims and maps every field to its wire name", () => {
   });
 });
 
+test("toChannelInput sends a proxy only when set, and an empty one to remove it", () => {
+  const cases: ReadonlyArray<[string, Partial<ChannelFormValues>, boolean, string | undefined]> = [
+    ["blank on create", { proxy: " " }, false, undefined],
+    ["blank on edit keeps the stored one", { proxy: "" }, true, undefined],
+    ["a new proxy, trimmed", { proxy: " socks5://bot:pw@proxy.example.com:1080 " }, true, "socks5://bot:pw@proxy.example.com:1080"],
+    ["removal wins over typed text", { proxy: "socks5://proxy.example.com:1080", removeProxy: true }, true, ""],
+    ["never for a webhook", { kind: "webhook", target: "https://hooks.example/x", proxy: "socks5://proxy.example.com:1080" }, false, undefined]
+  ];
+  for (const [name, changes, isEditing, want] of cases) {
+    const input = toChannelInput(values(changes), isEditing);
+    assert.equal(input.proxy, want, name);
+    assert.equal("proxy" in input, want !== undefined, name);
+  }
+});
+
 const errorCases: ReadonlyArray<[string, ChannelFormValues, boolean, keyof ReturnType<typeof channelFormErrors>]> = [
   ["blank name", values({ name: " " }), false, "name"],
   ["no trigger", values({ notifyNew: false, notifyRegression: false }), false, "triggers"],
   ["telegram without chat", values({ target: "" }), false, "target"],
   ["telegram create without token", values({ secret: "" }), false, "secret"],
+  ["an MTProto proxy link", values({ proxy: "tg://proxy?server=proxy.example.com&port=443&secret=abc" }), false, "proxy"],
+  ["a proxy without a scheme", values({ proxy: "proxy.example.com:1080" }), false, "proxy"],
   ["webhook without a scheme", values({ kind: "webhook", target: "hooks.example/x" }), false, "target"]
 ];
 
@@ -93,6 +113,9 @@ for (const [name, input, isEditing, field] of errorCases) {
 
 test("channelFormErrors accepts a telegram edit without a new token and a valid webhook", () => {
   assert.equal(hasChannelFormError(channelFormErrors(values({ secret: "" }), true)), false);
+  for (const proxy of ["socks5://bot:p@ss@proxy.example.com:1080", "socks5h://proxy:1080", "http://10.0.0.5:3128", "https://proxy.example.com/"]) {
+    assert.equal(channelFormErrors(values({ proxy }), false).proxy, null, proxy);
+  }
   assert.equal(hasChannelFormError(channelFormErrors(values({ kind: "webhook", target: "https://hooks.example/x", secret: "" }), false)), false);
 });
 

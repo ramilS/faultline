@@ -175,9 +175,13 @@ func (s *Service) normalizeInput(input ChannelInput, creating bool) (ChannelInpu
 			return ChannelInput{}, invalid(fmt.Sprintf("secret must be at most %d characters", maxSecretLength))
 		}
 	}
+	if input.Proxy != nil {
+		trimmed := strings.TrimSpace(*input.Proxy)
+		input.Proxy = &trimmed
+	}
 	switch input.Kind {
 	case KindTelegram:
-		err = validateTelegram(input, creating)
+		err = validateTelegram(input, creating, s.allowPrivate)
 	case KindWebhook:
 		err = validateWebhook(input, s.allowPrivate)
 	default:
@@ -189,9 +193,14 @@ func (s *Service) normalizeInput(input ChannelInput, creating bool) (ChannelInpu
 	return input, nil
 }
 
-func validateTelegram(input ChannelInput, creating bool) error {
+func validateTelegram(input ChannelInput, creating, allowPrivate bool) error {
 	if !telegramChatID.MatchString(input.Target) {
 		return invalid("chat id must be a number such as -1001234567890 or a @channel_username")
+	}
+	if input.Proxy != nil && *input.Proxy != "" {
+		if err := validateProxy(*input.Proxy, allowPrivate); err != nil {
+			return err
+		}
 	}
 	if input.Secret == nil {
 		if creating {
@@ -209,6 +218,9 @@ func validateTelegram(input ChannelInput, creating bool) error {
 // the sender's dial guard would refuse. It is early feedback only: a hostname
 // is checked against what it resolves to at send time, not here.
 func validateWebhook(input ChannelInput, allowPrivate bool) error {
+	if input.Proxy != nil && *input.Proxy != "" {
+		return invalid("a proxy can only be set on a Telegram channel")
+	}
 	if len(input.Target) > maxTargetLength {
 		return invalid(fmt.Sprintf("url must be at most %d characters", maxTargetLength))
 	}
@@ -216,9 +228,16 @@ func validateWebhook(input ChannelInput, allowPrivate bool) error {
 	if err != nil || (parsed.Scheme != "https" && parsed.Scheme != "http") || parsed.Host == "" {
 		return invalid("url must be an absolute http or https URL")
 	}
-	host := strings.ToLower(parsed.Hostname())
+	return refuseInsideHost("url", parsed.Hostname(), allowPrivate)
+}
+
+// refuseInsideHost refuses, up front, a host that is plainly an address the
+// sender's dial guard would refuse. It is early feedback only: a hostname is
+// checked against what it resolves to at send time, not here.
+func refuseInsideHost(field, host string, allowPrivate bool) error {
+	host = strings.ToLower(host)
 	if host == "localhost" || strings.HasSuffix(host, ".localhost") {
-		return invalid("url must not point at this server (localhost)")
+		return invalid(field + " must not point at this server (localhost)")
 	}
 	address, parseErr := netip.ParseAddr(host)
 	isLiteralAddress := parseErr == nil
@@ -226,9 +245,9 @@ func validateWebhook(input ChannelInput, allowPrivate bool) error {
 		return nil
 	}
 	if allowedAddress(address, true) {
-		return invalid("url points at a private network address; set FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true on the server to allow it")
+		return invalid(field + " points at a private network address; set FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true on the server to allow it")
 	}
-	return invalid("url must not point at a loopback, link-local or multicast address")
+	return invalid(field + " must not point at a loopback, link-local or multicast address")
 }
 
 func normalizeEnvironments(environments []string) ([]string, error) {

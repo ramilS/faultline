@@ -200,6 +200,16 @@ issue: an issue first seen in `staging` does not notify a `production`-only
 channel, and later production events for it do not either, because the issue is
 no longer new.
 
+A Telegram channel can send through a proxy, for a server that cannot reach
+`api.telegram.org` directly: an `http://`, `https://`, `socks5://` or
+`socks5h://` URL, with `user:password@` if the proxy requires it, for example
+`socks5://bot:secret@proxy.example.com:1080`. With SOCKS5 the proxy resolves
+`api.telegram.org` itself. MTProto proxy links (`tg://proxy?...`) do not work:
+they carry Telegram's app protocol, not the HTTPS Bot API. The proxy address is
+checked like a webhook URL (see below), so a proxy on the same Docker network
+needs `FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true`, and one on loopback is refused.
+The password is stored like the bot token and shown masked.
+
 Set `FAULTLINE_PUBLIC_URL` (for example `https://faultline.example.com`) to put a
 link to the issue in each message; without it messages carry no link.
 

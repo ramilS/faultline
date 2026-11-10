@@ -402,6 +402,8 @@ export interface NotificationChannel {
   /** A Telegram chat id or @username, or a webhook URL. */
   target: string;
   has_secret: boolean;
+  /** Telegram only: the proxy URL with its password masked, or null for a direct connection. */
+  proxy: string | null;
   enabled: boolean;
   notify_new: boolean;
   notify_regression: boolean;
@@ -415,14 +417,16 @@ export interface NotificationChannel {
 }
 
 /**
- * Create or full update. Omitting `secret` on update keeps the stored one;
- * `kind` cannot change after creation.
+ * Create or full update. Omitting `secret` or `proxy` on update keeps the
+ * stored one, and an empty `proxy` removes it; `kind` cannot change after
+ * creation.
  */
 export interface NotificationChannelInput {
   name: string;
   kind: NotificationChannelKind;
   target: string;
   secret?: string;
+  proxy?: string;
   enabled: boolean;
   notify_new: boolean;
   notify_regression: boolean;

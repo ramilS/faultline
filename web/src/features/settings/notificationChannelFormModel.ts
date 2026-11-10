@@ -8,6 +8,9 @@ export interface ChannelFormValues {
   target: string;
   /** Blank on edit means "keep the stored secret". */
   secret: string;
+  /** Telegram only. Blank on edit means "keep the stored proxy" unless removeProxy is set. */
+  proxy: string;
+  removeProxy: boolean;
   enabled: boolean;
   notifyNew: boolean;
   notifyRegression: boolean;
@@ -20,10 +23,13 @@ export interface ChannelFormErrors {
   name: string | null;
   target: string | null;
   secret: string | null;
+  proxy: string | null;
   triggers: string | null;
 }
 
-export const NO_CHANNEL_FORM_ERRORS: ChannelFormErrors = { name: null, target: null, secret: null, triggers: null };
+export const NO_CHANNEL_FORM_ERRORS: ChannelFormErrors = { name: null, target: null, secret: null, proxy: null, triggers: null };
+
+const PROXY_URL = /^(https?|socks5h?):\/\/[^/\s?#]+\/?$/i;
 
 export function initialChannelFormValues(channel: NotificationChannel | null): ChannelFormValues {
   if (channel === null) {
@@ -32,6 +38,8 @@ export function initialChannelFormValues(channel: NotificationChannel | null): C
       kind: "telegram",
       target: "",
       secret: "",
+      proxy: "",
+      removeProxy: false,
       enabled: true,
       notifyNew: true,
       notifyRegression: true,
@@ -44,6 +52,8 @@ export function initialChannelFormValues(channel: NotificationChannel | null): C
     kind: channel.kind,
     target: channel.target,
     secret: "",
+    proxy: "",
+    removeProxy: false,
     enabled: channel.enabled,
     notifyNew: channel.notify_new,
     notifyRegression: channel.notify_regression,
@@ -84,6 +94,10 @@ export function channelFormErrors(values: ChannelFormValues, isEditing: boolean)
     if (!isEditing && values.secret.trim() === "") {
       errors.secret = "Enter the bot token from @BotFather.";
     }
+    const proxy = values.proxy.trim();
+    if (!values.removeProxy && proxy !== "" && !PROXY_URL.test(proxy)) {
+      errors.proxy = "Enter a URL such as socks5://user:password@host:1080 (http, https, socks5 or socks5h).";
+    }
   } else if (!/^https?:\/\/[^/\s]+/i.test(target)) {
     errors.target = "Enter an http:// or https:// URL.";
   }
@@ -94,7 +108,7 @@ export function hasChannelFormError(errors: ChannelFormErrors): boolean {
   return Object.values(errors).some((error) => error !== null);
 }
 
-/** Leaves `secret` out on edit when blank, so the server keeps the stored one. */
+/** Leaves `secret` and `proxy` out when blank, so on edit the server keeps the stored ones. */
 export function toChannelInput(values: ChannelFormValues, isEditing: boolean): NotificationChannelInput {
   const input: NotificationChannelInput = {
     name: values.name.trim(),
@@ -109,6 +123,12 @@ export function toChannelInput(values: ChannelFormValues, isEditing: boolean): N
   const secret = values.secret.trim();
   if (secret !== "" || !isEditing) {
     input.secret = secret;
+  }
+  const proxy = values.proxy.trim();
+  if (values.kind === "telegram" && values.removeProxy) {
+    input.proxy = "";
+  } else if (values.kind === "telegram" && proxy !== "") {
+    input.proxy = proxy;
   }
   return input;
 }

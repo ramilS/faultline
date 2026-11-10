@@ -298,6 +298,30 @@ func TestNotificationChannelRepository(t *testing.T) {
 		}
 	})
 
+	t.Run("a proxy is read back masked, sent in full, and kept or removed on update", func(t *testing.T) {
+		proxy := "socks5://bot:s3cret@proxy.example.com:1080"
+		update := notify.ChannelInput{Name: "Ops", Target: "-100", Proxy: &proxy, Enabled: true, NotifyNew: true, Environments: []string{}, MinLevel: "error"}
+
+		updated, err := channels.Update(ctx, projectID, created.ID, update)
+
+		const masked = "socks5://bot:xxxxx@proxy.example.com:1080"
+		if err != nil || updated.Proxy != masked || listChannel(t, ctx, channels, projectID).Proxy != masked {
+			t.Fatalf("Update = %+v, %v; want the proxy masked in every read", updated, err)
+		}
+		if channel, destination, err := channels.Get(ctx, projectID, created.ID); err != nil || channel.Proxy != masked || destination.Proxy != proxy {
+			t.Fatalf("Get = %+v, %+v, %v; want the full proxy only in the destination", channel, destination, err)
+		}
+
+		update.Proxy = nil
+		if kept, err := channels.Update(ctx, projectID, created.ID, update); err != nil || kept.Proxy != masked {
+			t.Fatalf("Update without a proxy = %+v, %v; want it kept", kept, err)
+		}
+		update.Proxy = new("")
+		if removed, err := channels.Update(ctx, projectID, created.ID, update); err != nil || removed.Proxy != "" {
+			t.Fatalf("Update with an empty proxy = %+v, %v; want it removed", removed, err)
+		}
+	})
+
 	t.Run("a channel of another project is not found", func(t *testing.T) {
 		otherProject := projectID + 1000
 		if _, _, err := channels.Get(ctx, otherProject, created.ID); !errors.Is(err, notify.ErrChannelNotFound) {

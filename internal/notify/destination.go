@@ -50,12 +50,12 @@ func allowedAddress(address netip.Addr, allowPrivate bool) bool {
 	return true
 }
 
-// guardedWebhookClient checks the address at connect time, after DNS
+// guardedTransport checks the address at connect time, after DNS
 // resolution: checking the hostname when the channel is saved would let a
 // name that later re-resolves to an internal address (DNS rebinding) through.
-// Its transport sets no Proxy, so it dials directly and ignores HTTPS_PROXY:
-// through a proxy the check would only ever see the proxy's address.
-func guardedWebhookClient(allowPrivate bool) *http.Client {
+// It sets no Proxy, so it ignores HTTPS_PROXY; given a proxy, the guard
+// checks the proxy's address, which is the only one this server dials.
+func guardedTransport(allowPrivate bool) *http.Transport {
 	dialer := &net.Dialer{
 		Timeout: dialTimeout,
 		Control: func(_, hostPort string, _ syscall.RawConn) error {
@@ -69,13 +69,13 @@ func guardedWebhookClient(allowPrivate bool) *http.Client {
 			return nil
 		},
 	}
-	return newClient(&http.Transport{
+	return &http.Transport{
 		DialContext:         dialer.DialContext,
 		ForceAttemptHTTP2:   true,
 		TLSHandshakeTimeout: dialTimeout,
 		MaxIdleConns:        10,
 		IdleConnTimeout:     90 * time.Second,
-	})
+	}
 }
 
 // newClient times out after sendTimeout and does not follow redirects: an

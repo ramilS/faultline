@@ -68,6 +68,7 @@ export function NotificationChannelForm({ slug, channel, onSaved, onCancel }: No
 
   const isTelegram = values.kind === "telegram";
   const keepSecretHint = isEditing && channel.has_secret ? "Leave blank to keep the current one." : undefined;
+  const storedProxy = isEditing ? channel.proxy : null;
 
   return (
     <form onSubmit={submit} noValidate>
@@ -84,7 +85,9 @@ export function NotificationChannelForm({ slug, channel, onSaved, onCancel }: No
             <Select
               value={values.kind}
               disabled={isEditing}
-              onValueChange={(value) => update({ kind: value as NotificationChannelKind, target: "", secret: "" })}
+              onValueChange={(value) =>
+                update({ kind: value as NotificationChannelKind, target: "", secret: "", proxy: "", removeProxy: false })
+              }
             >
               <SelectTrigger id="channel-kind" className="w-full">
                 <SelectValue />
@@ -155,6 +158,42 @@ export function NotificationChannelForm({ slug, channel, onSaved, onCancel }: No
             aria-describedby={describedBy("channel-secret", errors.secret, true)}
           />
         </Field>
+
+        {isTelegram && (
+          <div className="space-y-2">
+            <Field
+              id="channel-proxy"
+              label="Proxy (optional)"
+              error={errors.proxy}
+              hint={
+                storedProxy === null
+                  ? "For servers that cannot reach api.telegram.org directly. http://, https://, socks5:// or socks5h://, with user:password@ if the proxy needs it. Blank connects directly."
+                  : `Currently ${storedProxy}. Leave blank to keep it.`
+              }
+            >
+              <Input
+                id="channel-proxy"
+                autoComplete="off"
+                spellCheck={false}
+                value={values.proxy}
+                disabled={values.removeProxy}
+                onChange={(event) => update({ proxy: event.target.value })}
+                placeholder="socks5://user:password@proxy.example.com:1080"
+                className="font-mono"
+                aria-invalid={errors.proxy !== null}
+                aria-describedby={describedBy("channel-proxy", errors.proxy, true)}
+              />
+            </Field>
+            {storedProxy !== null && (
+              <CheckboxField
+                id="channel-remove-proxy"
+                label="Remove the proxy and connect directly"
+                checked={values.removeProxy}
+                onChange={(checked) => update({ removeProxy: checked, proxy: "" })}
+              />
+            )}
+          </div>
+        )}
 
         <fieldset className="space-y-2">
           <legend className="text-sm font-medium">Notify about</legend>

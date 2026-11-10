@@ -233,3 +233,105 @@ func TestCreateAcceptsPrivateAddressesWhenAllowedAndAnyHostname(t *testing.T) {
 		}
 	}
 }
+
+func TestCreateRejectsInvalidProxies(t *testing.T) {
+	cases := []struct {
+		proxy        string
+		allowPrivate bool
+		message      string
+	}{
+		{"tg://proxy?server=proxy.example.com&port=443&secret=abc", true, "proxy must be an http://"},
+		{"ftp://proxy.example.com", true, "proxy must be an http://"},
+		{"proxy.example.com:1080", true, "proxy must be an http://"},
+		{"socks5://", true, "proxy must name a host"},
+		{"http://proxy.example.com:3128/path", true, "proxy must be scheme://"},
+		{"socks5://proxy.example.com:1080?x=1", true, "proxy must be scheme://"},
+		{"socks5://localhost:1080", true, "proxy must not point at this server"},
+		{"socks5://127.0.0.1:1080", true, "proxy must not point at a loopback"},
+		{"http://169.254.169.254:80", true, "proxy must not point at a loopback"},
+		{"socks5://10.0.0.5:1080", false, "proxy points at a private network address"},
+		{"socks5://" + strings.Repeat("a", maxProxyLength) + ":1080", true, "proxy must be at most"},
+	}
+	for _, tc := range cases {
+		input := validTelegram()
+		input.Proxy = new(tc.proxy)
+		repository := newMemoryChannels()
+
+		_, err := NewService(repository, nil, ServiceOptions{AllowPrivateNetworks: tc.allowPrivate}).Create(t.Context(), 1, input)
+
+		invalid, ok := errors.AsType[*ValidationError](err)
+		if !ok || !strings.HasPrefix(invalid.Message, tc.message) || repository.createCalls != 0 {
+			t.Errorf("Create(proxy %s, allowPrivate=%v) = %v, want %q", tc.proxy, tc.allowPrivate, err, tc.message)
+		}
+	}
+}
+
+func TestCreateAcceptsEveryProxyScheme(t *testing.T) {
+	for _, tc := range []struct {
+		proxy        string
+		allowPrivate bool
+	}{
+		{"socks5://bot:p%40ss@proxy.example.com:1080", false},
+		{"socks5h://proxy.example.com:1080", false},
+		{"http://user:secret@proxy.example.com:3128", false},
+		{"https://proxy.example.com:443/", false},
+		{"socks5://xray:1080", false},
+		{"socks5://10.0.0.5:1080", true},
+	} {
+		repository := newMemoryChannels()
+		input := validTelegram()
+		input.Proxy = new("  " + tc.proxy + " ")
+
+		_, err := NewService(repository, nil, ServiceOptions{AllowPrivateNetworks: tc.allowPrivate}).Create(t.Context(), 1, input)
+
+		if err != nil {
+			t.Errorf("Create(proxy %s) = %v", tc.proxy, err)
+			continue
+		}
+		if stored := repository.lastCreate.Proxy; stored == nil || *stored != tc.proxy {
+			t.Errorf("stored proxy = %v, want %q trimmed", stored, tc.proxy)
+		}
+	}
+}
+
+func TestProxyIsOnlyForTelegram(t *testing.T) {
+	input := validWebhook()
+	input.Proxy = new("socks5://proxy.example.com:1080")
+
+	_, err := NewService(newMemoryChannels(), nil, ServiceOptions{}).Create(t.Context(), 1, input)
+
+	if invalid, ok := errors.AsType[*ValidationError](err); !ok || invalid.Message != "a proxy can only be set on a Telegram channel" {
+		t.Fatalf("Create = %v, want the webhook proxy refused", err)
+	}
+}
+
+func TestUpdatePassesTheProxyChoiceThrough(t *testing.T) {
+	for name, proxy := range map[string]*string{"keep": nil, "remove": new("")} {
+		t.Run(name, func(t *testing.T) {
+			repository := newMemoryChannels(Channel{ID: 3, Kind: KindTelegram})
+			input := validTelegram()
+			input.Proxy = proxy
+
+			if _, err := NewService(repository, nil, ServiceOptions{}).Update(t.Context(), 1, 3, input); err != nil {
+				t.Fatalf("Update = %v", err)
+			}
+			if got := repository.lastUpdate.Proxy; !reflect.DeepEqual(got, proxy) {
+				t.Fatalf("proxy = %v, want %v", got, proxy)
+			}
+		})
+	}
+}
+
+func TestRedactedProxyMasksOnlyThePassword(t *testing.T) {
+	cases := map[string]string{
+		"":                                "",
+		"socks5://proxy.example.com:1080": "socks5://proxy.example.com:1080",
+		"socks5://bot:s3cret@proxy.example.com:1080": "socks5://bot:xxxxx@proxy.example.com:1080",
+		"http://bot@proxy.example.com:3128":          "http://bot@proxy.example.com:3128",
+	}
+	for raw, want := range cases {
+		if got := RedactedProxy(raw); got != want {
+			t.Errorf("RedactedProxy(%q) = %q, want %q", raw, got, want)
+		}
+	}
+}

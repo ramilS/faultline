@@ -43,9 +43,9 @@ type SendError struct {
 func (e *SendError) Error() string { return e.Message }
 
 type SenderOptions struct {
-	// AllowPrivateNetworks lets webhooks reach private ranges (10/8,
-	// 172.16/12, 192.168/16, fc00::/7, 100.64/10). Loopback and link-local
-	// stay refused regardless; see allowedAddress.
+	// AllowPrivateNetworks lets webhooks and Telegram proxies reach private
+	// ranges (10/8, 172.16/12, 192.168/16, fc00::/7, 100.64/10). Loopback and
+	// link-local stay refused regardless; see allowedAddress.
 	AllowPrivateNetworks bool
 	// Client replaces both the Telegram and the guarded webhook client. Only
 	// tests set it, to reach an httptest server on loopback.
@@ -58,15 +58,22 @@ type SenderOptions struct {
 type Sender struct {
 	telegramClient *http.Client
 	webhookClient  *http.Client
+	proxyTransport func() *http.Transport
 	telegramAPI    string
 	now            func() time.Time
 }
 
 func NewSender(options SenderOptions) *Sender {
-	sender := &Sender{telegramClient: options.Client, webhookClient: options.Client, telegramAPI: options.TelegramAPI, now: options.Now}
+	sender := &Sender{
+		telegramClient: options.Client,
+		webhookClient:  options.Client,
+		proxyTransport: func() *http.Transport { return guardedTransport(options.AllowPrivateNetworks) },
+		telegramAPI:    options.TelegramAPI,
+		now:            options.Now,
+	}
 	if options.Client == nil {
 		sender.telegramClient = newClient(http.DefaultTransport)
-		sender.webhookClient = guardedWebhookClient(options.AllowPrivateNetworks)
+		sender.webhookClient = newClient(guardedTransport(options.AllowPrivateNetworks))
 	}
 	if sender.telegramAPI == "" {
 		sender.telegramAPI = defaultTelegramAPI
@@ -118,8 +125,12 @@ func (s *Sender) sendTelegram(ctx context.Context, destination Destination, n No
 	if err != nil {
 		return &SendError{Message: "telegram: encode message: " + err.Error(), Permanent: true}
 	}
+	client, err := s.telegramClientFor(destination.Proxy)
+	if err != nil {
+		return err
+	}
 	endpoint := s.telegramAPI + "/bot" + destination.Secret + "/sendMessage"
-	status, header, reply, err := s.post(ctx, s.telegramClient, endpoint, body, nil)
+	status, header, reply, err := s.post(ctx, client, endpoint, body, nil)
 	if err != nil {
 		return transportError("telegram", err)
 	}
@@ -137,6 +148,20 @@ func (s *Sender) sendTelegram(ctx context.Context, destination Destination, n No
 		retryAfter = retryAfterHeader(header)
 	}
 	return &SendError{Message: message, Permanent: !retryableStatus(status), RetryAfter: retryAfter}
+}
+
+func (s *Sender) telegramClientFor(proxy string) (*http.Client, error) {
+	if proxy == "" {
+		return s.telegramClient, nil
+	}
+	proxyURL, err := parseProxyURL(proxy)
+	if err != nil {
+		return nil, &SendError{Message: "telegram: stored proxy is invalid; edit the channel to fix it", Permanent: true}
+	}
+	transport := s.proxyTransport()
+	transport.Proxy = http.ProxyURL(proxyURL)
+	transport.DisableKeepAlives = true
+	return newClient(transport), nil
 }
 
 func (s *Sender) sendWebhook(ctx context.Context, destination Destination, n Notification, deliveryID int64) error {

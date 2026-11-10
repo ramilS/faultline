@@ -72,7 +72,7 @@ func TestListNotificationChannelsWireShape(t *testing.T) {
 	successAt := time.Date(2026, 10, 15, 9, 0, 0, 0, time.UTC)
 	errorAt := successAt.Add(time.Hour)
 	service := &stubNotificationService{channels: []notify.Channel{{
-		ID: 3, Name: "Ops", Kind: notify.KindTelegram, Target: "-100", HasSecret: true, Enabled: true,
+		ID: 3, Name: "Ops", Kind: notify.KindTelegram, Target: "-100", HasSecret: true, Proxy: "socks5://bot:xxxxx@proxy.example.com:1080", Enabled: true,
 		NotifyNew: true, NotifyRegression: false, MinLevel: "error",
 		LastSuccessAt: &successAt, LastError: "telegram: HTTP 403: Forbidden", LastErrorAt: &errorAt, CreatedAt: successAt,
 	}}}
@@ -81,7 +81,8 @@ func TestListNotificationChannelsWireShape(t *testing.T) {
 	handler, _ := newNotificationHandler(service)
 	handler.List(recorder, notificationRequest(http.MethodGet, "/", ""))
 
-	want := `{"channels":[{"id":3,"name":"Ops","kind":"telegram","target":"-100","has_secret":true,"enabled":true,` +
+	want := `{"channels":[{"id":3,"name":"Ops","kind":"telegram","target":"-100","has_secret":true,` +
+		`"proxy":"socks5://bot:xxxxx@proxy.example.com:1080","enabled":true,` +
 		`"notify_new":true,"notify_regression":false,"environments":[],"min_level":"error",` +
 		`"last_success_at":"2026-10-15T09:00:00Z","last_error":"telegram: HTTP 403: Forbidden","last_error_at":"2026-10-15T10:00:00Z",` +
 		`"created_at":"2026-10-15T09:00:00Z"}]}`
@@ -97,8 +98,9 @@ func TestListNotificationChannelsSendsNullForNoError(t *testing.T) {
 	handler, _ := newNotificationHandler(service)
 	handler.List(recorder, notificationRequest(http.MethodGet, "/", ""))
 
-	if body := recorder.Body.String(); !strings.Contains(body, `"last_error":null`) || !strings.Contains(body, `"last_success_at":null`) {
-		t.Fatalf("body = %s, want null last_error and last_success_at", body)
+	if body := recorder.Body.String(); !strings.Contains(body, `"last_error":null`) || !strings.Contains(body, `"last_success_at":null`) ||
+		!strings.Contains(body, `"proxy":null`) {
+		t.Fatalf("body = %s, want null last_error, last_success_at and proxy", body)
 	}
 }
 
@@ -150,6 +152,35 @@ func TestUpdateNotificationChannelWithoutSecretPassesNil(t *testing.T) {
 
 	if recorder.Code != http.StatusOK || service.updated == nil || service.updated.Secret != nil {
 		t.Fatalf("status = %d, update input = %+v, want a nil secret", recorder.Code, service.updated)
+	}
+}
+
+func TestNotificationChannelRequestProxy(t *testing.T) {
+	cases := map[string]struct {
+		field string
+		want  *string
+	}{
+		"omitted keeps the stored proxy": {field: "", want: nil},
+		"empty removes it":               {field: `"proxy":"",`, want: new("")},
+		"a URL sets it":                  {field: `"proxy":"socks5://bot:pw@proxy.example.com:1080",`, want: new("socks5://bot:pw@proxy.example.com:1080")},
+	}
+	for name, tc := range cases {
+		t.Run(name, func(t *testing.T) {
+			service := &stubNotificationService{}
+			body := strings.Replace(completeChannelBody, `"secret":"123:abc",`, tc.field, 1)
+			recorder := httptest.NewRecorder()
+
+			handler, _ := newNotificationHandler(service)
+			handler.Update(recorder, notificationRequest(http.MethodPut, "/", body))
+
+			got := service.updated
+			if recorder.Code != http.StatusOK || got == nil {
+				t.Fatalf("status = %d %s", recorder.Code, recorder.Body.String())
+			}
+			if (got.Proxy == nil) != (tc.want == nil) || (got.Proxy != nil && *got.Proxy != *tc.want) {
+				t.Fatalf("proxy = %v, want %v", got.Proxy, tc.want)
+			}
+		})
 	}
 }
 

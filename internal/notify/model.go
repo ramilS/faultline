@@ -41,7 +41,7 @@ const (
 
 // Channel is a configured destination as the dashboard sees it. The secret
 // itself never leaves storage through this type; HasSecret only says whether
-// one is set.
+// one is set, and Proxy is the Telegram proxy URL with its password masked.
 type Channel struct {
 	ID               int64
 	ProjectID        int64
@@ -49,6 +49,7 @@ type Channel struct {
 	Kind             Kind
 	Target           string
 	HasSecret        bool
+	Proxy            string
 	Enabled          bool
 	NotifyNew        bool
 	NotifyRegression bool
@@ -60,14 +61,15 @@ type Channel struct {
 	CreatedAt        time.Time
 }
 
-// ChannelInput is a create or full update of a channel. A nil Secret on
-// update keeps the stored one, so the dashboard can save other fields without
-// ever having read the secret back.
+// ChannelInput is a create or full update of a channel. A nil Secret or Proxy
+// on update keeps the stored one, so the dashboard can save other fields
+// without ever having read the secret back; an empty Proxy removes the proxy.
 type ChannelInput struct {
 	Name             string
 	Kind             Kind
 	Target           string
 	Secret           *string
+	Proxy            *string
 	Enabled          bool
 	NotifyNew        bool
 	NotifyRegression bool
@@ -81,6 +83,7 @@ type Destination struct {
 	Kind   Kind
 	Target string
 	Secret string
+	Proxy  string
 }
 
 // Notification is the rendered-independent content of one message.

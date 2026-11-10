@@ -44,6 +44,7 @@ const telegram: NotificationChannel = {
   kind: "telegram",
   target: "-1001234567890",
   has_secret: true,
+  proxy: null,
   enabled: true,
   notify_new: true,
   notify_regression: true,
@@ -188,6 +189,40 @@ describe("NotificationsPage", () => {
     const [slug, id, input] = updateChannel.mock.calls[0];
     expect([slug, id, input.name]).toEqual(["shop", 3, "Backend"]);
     expect("secret" in input).toBe(false);
+    expect("proxy" in input).toBe(false);
+  });
+
+  it("creates a Telegram channel behind a proxy", async () => {
+    listChannels.mockResolvedValue([]);
+    createChannel.mockResolvedValue(telegram);
+
+    renderPage();
+    fireEvent.click(await screen.findByRole("button", { name: "Add the first channel" }));
+    fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Ops" } });
+    fireEvent.change(screen.getByLabelText("Chat ID"), { target: { value: "-100" } });
+    fireEvent.change(screen.getByLabelText("Bot token"), { target: { value: "123456789:token" } });
+    fireEvent.change(screen.getByLabelText("Proxy (optional)"), { target: { value: "socks5://bot:pw@proxy.example.com:1080" } });
+    fireEvent.click(screen.getByRole("button", { name: "Add channel" }));
+
+    await waitFor(() =>
+      expect(createChannel).toHaveBeenCalledWith("shop", expect.objectContaining({ proxy: "socks5://bot:pw@proxy.example.com:1080" }))
+    );
+  });
+
+  it("shows the masked proxy and removes it on request", async () => {
+    const proxied = { ...telegram, proxy: "socks5://bot:xxxxx@proxy.example.com:1080" };
+    listChannels.mockResolvedValue([proxied]);
+    updateChannel.mockResolvedValue({ ...proxied, proxy: null });
+
+    renderPage();
+    expect(await screen.findByText("via socks5://bot:xxxxx@proxy.example.com:1080")).toBeDefined();
+    fireEvent.click(screen.getByRole("button", { name: "Edit Backend on-call" }));
+    expect(screen.getByText("Currently socks5://bot:xxxxx@proxy.example.com:1080. Leave blank to keep it.")).toBeDefined();
+    fireEvent.click(screen.getByRole("checkbox", { name: "Remove the proxy and connect directly" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save channel" }));
+
+    await waitFor(() => expect(updateChannel).toHaveBeenCalledTimes(1));
+    expect(updateChannel.mock.calls[0][2].proxy).toBe("");
   });
 
   it("reports a successful test message", async () => {
