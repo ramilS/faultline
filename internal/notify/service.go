@@ -245,7 +245,7 @@ func refuseInsideHost(field, host string, allowPrivate bool) error {
 		return nil
 	}
 	if allowedAddress(address, true) {
-		return invalid(field + " points at a private network address; set FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true on the server to allow it")
+		return invalid(field + " points at a private network address; set FAULTLINE_NOTIFY_ALLOW_PRIVATE=true on the server to allow it")
 	}
 	return invalid(field + " must not point at a loopback, link-local or multicast address")
 }

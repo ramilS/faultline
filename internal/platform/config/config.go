@@ -112,13 +112,14 @@ type Config struct {
 	// PublicURL is the dashboard's external base URL, used to link to issues
 	// from notifications. Empty means notifications carry no link.
 	PublicURL string
-	// WebhookAllowPrivate lets notification webhooks reach private network
-	// addresses. Off by default: the server can reach what an outside caller
-	// cannot, so an owner-supplied URL must not open that by default.
-	WebhookAllowPrivate bool
-	Database            DatabaseConfig
-	Durability          DurabilityConfig
-	SSO                 SSOConfig
+	// NotifyAllowPrivate lets notification webhooks and Telegram proxies reach
+	// private network addresses. Off by default: the server can reach what an
+	// outside caller cannot, so an owner-supplied URL must not open that by
+	// default.
+	NotifyAllowPrivate bool
+	Database           DatabaseConfig
+	Durability         DurabilityConfig
+	SSO                SSOConfig
 }
 
 // Load reads configuration from the environment and rejects invalid values.
@@ -228,16 +229,16 @@ func Load() (Config, error) {
 	if err != nil {
 		return Config{}, err
 	}
-	webhookAllowPrivate, err := boolValue("FAULTLINE_WEBHOOK_ALLOW_PRIVATE", false)
+	notifyAllowPrivate, err := boolValue("FAULTLINE_NOTIFY_ALLOW_PRIVATE", false)
 	if err != nil {
 		return Config{}, err
 	}
 
 	return Config{
-		Address:             address,
-		CookieSecure:        cookieSecure,
-		PublicURL:           publicURL,
-		WebhookAllowPrivate: webhookAllowPrivate,
+		Address:            address,
+		CookieSecure:       cookieSecure,
+		PublicURL:          publicURL,
+		NotifyAllowPrivate: notifyAllowPrivate,
 		Database: DatabaseConfig{
 			URL:                databaseURL,
 			MaxConns:           maxConns,

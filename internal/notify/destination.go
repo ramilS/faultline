@@ -37,7 +37,7 @@ var carrierGradeNAT = netip.MustParsePrefix("100.64.0.0/10")
 // allowedAddress decides whether a webhook may connect to address. Loopback,
 // link-local (which holds the 169.254.169.254 metadata service), unspecified
 // and multicast addresses are never allowed; private ranges only when the
-// operator opted in with FAULTLINE_WEBHOOK_ALLOW_PRIVATE.
+// operator opted in with FAULTLINE_NOTIFY_ALLOW_PRIVATE.
 func allowedAddress(address netip.Addr, allowPrivate bool) bool {
 	address = address.Unmap()
 	if address.IsLoopback() || address.IsLinkLocalUnicast() || address.IsLinkLocalMulticast() ||

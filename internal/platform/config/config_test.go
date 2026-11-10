@@ -307,7 +307,7 @@ func clearEnvironment(t *testing.T) {
 		"FAULTLINE_SPILL_FSYNC_INTERVAL",
 		"FAULTLINE_SPILL_MAX_BYTES",
 		"FAULTLINE_PUBLIC_URL",
-		"FAULTLINE_WEBHOOK_ALLOW_PRIVATE",
+		"FAULTLINE_NOTIFY_ALLOW_PRIVATE",
 		"FAULTLINE_OIDC_CLIENT_ID",
 		"FAULTLINE_OIDC_CLIENT_SECRET",
 		"FAULTLINE_OIDC_ISSUER",
@@ -407,7 +407,7 @@ func TestLoadPublicURL(t *testing.T) {
 	}
 }
 
-func TestLoadWebhookAllowPrivate(t *testing.T) {
+func TestLoadNotifyAllowPrivate(t *testing.T) {
 	cases := map[string]struct {
 		value   string
 		want    bool
@@ -422,15 +422,15 @@ func TestLoadWebhookAllowPrivate(t *testing.T) {
 		t.Run(name, func(t *testing.T) {
 			clearEnvironment(t)
 			t.Setenv("DATABASE_URL", "postgres://db/faultline")
-			t.Setenv("FAULTLINE_WEBHOOK_ALLOW_PRIVATE", testCase.value)
+			t.Setenv("FAULTLINE_NOTIFY_ALLOW_PRIVATE", testCase.value)
 
 			got, err := Load()
 
 			if (err != nil) != testCase.wantErr {
 				t.Fatalf("Load() error = %v, wantErr %v", err, testCase.wantErr)
 			}
-			if err == nil && got.WebhookAllowPrivate != testCase.want {
-				t.Fatalf("WebhookAllowPrivate = %v, want %v", got.WebhookAllowPrivate, testCase.want)
+			if err == nil && got.NotifyAllowPrivate != testCase.want {
+				t.Fatalf("NotifyAllowPrivate = %v, want %v", got.NotifyAllowPrivate, testCase.want)
 			}
 		})
 	}

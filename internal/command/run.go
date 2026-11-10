@@ -338,12 +338,12 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 
 	scrubService := scrub.NewService(database.Scrubbing)
 
-	notificationSender := notify.NewSender(notify.SenderOptions{AllowPrivateNetworks: configuration.WebhookAllowPrivate})
+	notificationSender := notify.NewSender(notify.SenderOptions{AllowPrivateNetworks: configuration.NotifyAllowPrivate})
 	var notificationService api.NotificationService
 	if database.NotificationChannels != nil {
 		notificationService = notify.NewService(database.NotificationChannels, notificationSender, notify.ServiceOptions{
 			PublicURL:            configuration.PublicURL,
-			AllowPrivateNetworks: configuration.WebhookAllowPrivate,
+			AllowPrivateNetworks: configuration.NotifyAllowPrivate,
 		})
 	}
 	if database.NotificationQueue != nil {

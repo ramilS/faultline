@@ -207,7 +207,7 @@ A Telegram channel can send through a proxy, for a server that cannot reach
 `api.telegram.org` itself. MTProto proxy links (`tg://proxy?...`) do not work:
 they carry Telegram's app protocol, not the HTTPS Bot API. The proxy address is
 checked like a webhook URL (see below), so a proxy on the same Docker network
-needs `FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true`, and one on loopback is refused.
+needs `FAULTLINE_NOTIFY_ALLOW_PRIVATE=true`, and one on loopback is refused.
 The password is stored like the bot token and shown masked.
 
 Set `FAULTLINE_PUBLIC_URL` (for example `https://faultline.example.com`) to put a
@@ -251,7 +251,7 @@ caller cannot, so a webhook URL is not allowed to point inside. Loopback
 address `169.254.169.254`), multicast and unspecified addresses are always
 refused. Private ranges (`10.0.0.0/8`, `172.16.0.0/12`, `192.168.0.0/16`,
 `fc00::/7`, `100.64.0.0/10`) are refused unless the server runs with
-`FAULTLINE_WEBHOOK_ALLOW_PRIVATE=true`, which a receiver on the same network
+`FAULTLINE_NOTIFY_ALLOW_PRIVATE=true`, which a receiver on the same network
 (n8n, Mattermost, an internal service by its container name) needs. The check
 is made on the address a hostname resolves to when each request is sent, so a
 name that later re-resolves inside is caught too; a refused delivery is not
