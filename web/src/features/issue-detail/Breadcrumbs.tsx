@@ -137,10 +137,13 @@ function BreadcrumbListItem({ row, eventTimestamp }: { row: BreadcrumbRow; event
           {offset ?? "—"}
         </span>
         <LevelBadge level={row.level} />
-        <span className="text-muted-foreground shrink-0 font-mono text-xs">
+        <span
+          className="text-muted-foreground min-w-0 truncate font-mono text-xs"
+          title={row.category === "" ? undefined : row.category}
+        >
           {row.category === "" ? "—" : row.category}
         </span>
-        <span className="min-w-0 flex-1 break-words">
+        <span className="min-w-0 grow basis-64 break-words">
           {row.messageHref !== null ? (
             <a href={row.messageHref} target="_blank" rel="noreferrer" className="underline underline-offset-2">
               {row.message}
