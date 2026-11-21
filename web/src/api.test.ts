@@ -895,3 +895,25 @@ test("testNotificationChannel surfaces the destination's refusal from a 502", as
   assert.equal(calls[0].url, "/api/v1/projects/web/notification-channels/3/test");
   assert.equal(calls[0].init.method, "POST");
 });
+
+test("getIssueDigest reads the selected event's digest as text", async () => {
+  const { fetch, calls } = recordingFetch(
+    new Response("# Issue 5 · web\n", { status: 200, headers: { "Content-Type": "text/markdown; charset=utf-8" } }),
+  );
+  const api = createApi(fetch);
+
+  const digest = await api.getIssueDigest(5, "11111111-1111-4111-8111-111111111111");
+
+  assert.equal(calls[0].url, "/api/v1/issues/5/digest?event=11111111-1111-4111-8111-111111111111");
+  assert.equal(calls[0].init.credentials, "same-origin");
+  assert.equal(digest, "# Issue 5 · web\n");
+});
+
+test("getIssueDigest without a selected event asks for the latest one", async () => {
+  const { fetch, calls } = recordingFetch(new Response("digest", { status: 200 }));
+  const api = createApi(fetch);
+
+  await api.getIssueDigest(5, null);
+
+  assert.equal(calls[0].url, "/api/v1/issues/5/digest");
+});

@@ -1,4 +1,4 @@
-import { CircleCheck, CircleDot, GitMerge } from "lucide-react";
+import { Bot, CircleCheck, CircleDot, GitMerge } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -9,6 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { messageFor } from "@/errors";
 import { useSession } from "@/features/auth/SessionProvider";
+import { copyLoadedText } from "@/lib/clipboard";
 
 import { AssigneeMenu } from "./AssigneeMenu";
 import { CopyButton } from "./CopyButton";
@@ -26,12 +27,13 @@ const REOPEN: StatusAction = { status: "unresolved", label: "Reopen", icon: Circ
 interface IssueActionsProps {
   issue: IssueSummary;
   slug: string;
+  selectedEventId: string | null;
   /** Receives the server's updated issue so the page never guesses the result. */
   onChanged: (detail: IssueDetail) => void;
   onMerged: (targetId: number) => void;
 }
 
-export function IssueActions({ issue, slug, onChanged, onMerged }: IssueActionsProps) {
+export function IssueActions({ issue, slug, selectedEventId, onChanged, onMerged }: IssueActionsProps) {
   const { session } = useSession();
   const [pending, setPending] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
@@ -109,6 +111,16 @@ export function IssueActions({ issue, slug, onChanged, onMerged }: IssueActionsP
       <CopyButton value={() => window.location.href} label="Issue link" variant="outline" size="sm">
         Share
       </CopyButton>
+
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        onClick={() => void copyLoadedText(() => api.getIssueDigest(issue.id, selectedEventId), "Issue digest for AI")}
+      >
+        <Bot aria-hidden="true" />
+        For AI
+      </Button>
 
       <MergeDialog
         slug={slug}

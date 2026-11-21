@@ -124,6 +124,7 @@ function IssueDetail({ slug, issueId }: IssueDetailProps) {
           <IssueActions
             issue={result.issue}
             slug={slug}
+            selectedEventId={selectedEvent?.event_id ?? null}
             onChanged={issue.replace}
             onMerged={(targetId) => navigate(`/${slug}/issues/${targetId}`, { replace: true })}
           />

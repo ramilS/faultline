@@ -46,11 +46,11 @@ func TestMemberReachableRouteCount(t *testing.T) {
 			count++
 		}
 	}
-	// 19 project-bearing routes (including the read-only artifact inventory, data-scrubbing
-	// configuration and the issue view mark) plus GET /api/v1/users/assignable and the every-project
+	// 20 project-bearing routes (including the read-only artifact inventory, data-scrubbing
+	// configuration, the issue view mark and the issue digest) plus GET /api/v1/users/assignable and the every-project
 	// GET /api/v1/issues.
-	if count != 21 {
-		t.Errorf("gateMember routes = %d, want 21: a new project-bearing route must be gated as gateMember, and this count updated deliberately", count)
+	if count != 22 {
+		t.Errorf("gateMember routes = %d, want 22: a new project-bearing route must be gated as gateMember, and this count updated deliberately", count)
 	}
 }
 

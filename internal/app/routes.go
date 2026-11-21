@@ -237,6 +237,7 @@ func issueRoutes(dependencies Dependencies) []route {
 		{pattern: "GET /api/v1/issues/{id}/events/latest", gate: gateMember, handler: http.HandlerFunc(issueHandler.LatestEvent)},
 		{pattern: "GET /api/v1/issues/{id}/events", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueEvents)},
 		{pattern: "GET /api/v1/issues/{id}/stats", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueStats)},
+		{pattern: "GET /api/v1/issues/{id}/digest", gate: gateMember, handler: http.HandlerFunc(issueHandler.IssueDigest)},
 		{pattern: "GET /api/v1/events/{event_id}", gate: gateMember, handler: http.HandlerFunc(issueHandler.EventByID)},
 		{pattern: "GET /api/v1/events/{event_id}/timeline", gate: gateMember, handler: http.HandlerFunc(issueHandler.Timeline)},
 		{pattern: "GET /api/v1/projects/{slug}/tags", gate: gateMember, handler: http.HandlerFunc(facetHandler.TagKeys)},

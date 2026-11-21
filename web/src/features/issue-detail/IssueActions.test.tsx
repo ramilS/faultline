@@ -20,15 +20,16 @@ const SHARE_URL = "https://app.example.com/acme/issues/42?event=evt-9";
 // the only way to observe what was copied, following the same pattern
 // CopyButton.test.tsx uses.
 vi.mock("@/lib/clipboard", () => ({
-  copyToClipboard: vi.fn()
+  copyToClipboard: vi.fn(),
+  copyLoadedText: vi.fn()
 }));
 
 vi.mock("@/apiClient", () => ({
-  api: { patchIssue: vi.fn() }
+  api: { patchIssue: vi.fn(), getIssueDigest: vi.fn() }
 }));
 
 import { api } from "@/apiClient";
-import { copyToClipboard } from "@/lib/clipboard";
+import { copyLoadedText, copyToClipboard } from "@/lib/clipboard";
 
 import type { IssueDetail, IssueStatus, IssueSummary } from "@/api";
 
@@ -74,13 +75,13 @@ describe("IssueActions share button", () => {
   });
 
   it("is present with a discernible name", () => {
-    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+    render(<IssueActions issue={buildIssue()} slug="acme" selectedEventId={null} onChanged={() => {}} onMerged={() => {}} />);
 
     expect(screen.getByRole("button", { name: "Share" })).toBeDefined();
   });
 
   it("copies the current page URL at click time, not a value captured at render", () => {
-    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+    render(<IssueActions issue={buildIssue()} slug="acme" selectedEventId={null} onChanged={() => {}} onMerged={() => {}} />);
 
     // Change the URL after render, before the click — a render-time read
     // would still copy the stale value the location had when this mounted.
@@ -93,6 +94,20 @@ describe("IssueActions share button", () => {
     fireEvent.click(screen.getByRole("button", { name: "Share" }));
 
     expect(mockedCopyToClipboard).toHaveBeenCalledWith(laterUrl, "Issue link");
+  });
+});
+
+describe("IssueActions digest for AI", () => {
+  it("copies the digest of the event on screen", async () => {
+    vi.mocked(api.getIssueDigest).mockResolvedValue("# Issue 42");
+    render(<IssueActions issue={buildIssue()} slug="acme" selectedEventId="evt-9" onChanged={() => {}} onMerged={() => {}} />);
+
+    fireEvent.click(screen.getByRole("button", { name: "For AI" }));
+
+    const [load, label] = vi.mocked(copyLoadedText).mock.calls[0];
+    expect(label).toBe("Issue digest for AI");
+    await expect(load()).resolves.toBe("# Issue 42");
+    expect(api.getIssueDigest).toHaveBeenCalledWith(buildIssue().id, "evt-9");
   });
 });
 
@@ -116,7 +131,7 @@ describe("IssueActions ignore menu", () => {
     };
     patchIssue.mockResolvedValue(ignored);
     const onChanged = vi.fn();
-    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={onChanged} onMerged={() => {}} />);
+    render(<IssueActions issue={buildIssue()} slug="acme" selectedEventId={null} onChanged={onChanged} onMerged={() => {}} />);
 
     pickIgnoreChoice("Until 100 more events");
 
@@ -126,7 +141,7 @@ describe("IssueActions ignore menu", () => {
 
   it("ignores forever without a condition", () => {
     patchIssue.mockReturnValue(new Promise(() => {}));
-    render(<IssueActions issue={buildIssue()} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+    render(<IssueActions issue={buildIssue()} slug="acme" selectedEventId={null} onChanged={() => {}} onMerged={() => {}} />);
 
     pickIgnoreChoice("Forever");
 
@@ -138,6 +153,7 @@ describe("IssueActions ignore menu", () => {
       <IssueActions
         issue={buildIssue({ status: "ignored", ignore_until: { kind: "users", until: null, count: 10, so_far: 3 } })}
         slug="acme"
+        selectedEventId={null}
         onChanged={() => {}}
         onMerged={() => {}}
       />
@@ -153,7 +169,7 @@ describe("IssueActions status buttons", () => {
     { status: "resolved", shown: ["Ignore", "Reopen"] },
     { status: "ignored", shown: ["Resolve", "Ignore", "Reopen"] }
   ])("offers $shown on a $status issue", ({ status, shown }) => {
-    render(<IssueActions issue={buildIssue({ status })} slug="acme" onChanged={() => {}} onMerged={() => {}} />);
+    render(<IssueActions issue={buildIssue({ status })} slug="acme" selectedEventId={null} onChanged={() => {}} onMerged={() => {}} />);
 
     const offered = screen
       .getAllByRole("button")

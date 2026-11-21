@@ -596,6 +596,7 @@ export interface FaultlineApi {
   listIssueEvents(id: number, options?: ListIssueEventsOptions): Promise<{ events: EventSummary[]; next_cursor: string | null }>;
   getEvent(eventId: string): Promise<EventDetail>;
   getIssueStats(id: number, period: StatsPeriod): Promise<Bucket[]>;
+  getIssueDigest(id: number, eventId: string | null): Promise<string>;
   listIssueUsers(id: number): Promise<IssueUsersFacet>;
   getTimeline(eventId: string): Promise<Span[]>;
   getDataScrubbing(slug: string): Promise<DataScrubbingView>;
@@ -779,6 +780,10 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
       const body = await request<{ period: string; buckets: Bucket[] }>(fetchImpl, `/api/v1/issues/${id}/stats?period=${period}`, { method: "GET" });
       return body.buckets;
     },
+    getIssueDigest: async (id, eventId) => {
+      const query = eventId === null ? "" : `?event=${encodeURIComponent(eventId)}`;
+      return request<string>(fetchImpl, `/api/v1/issues/${id}/digest${query}`, { method: "GET", expectText: true });
+    },
     // No `limit` param: mirrors listIssueEvents above — the server defaults
     // it (parseFacetLimit in internal/api/users_facet.go), and this facet
     // has no UI control that would need to change it.
@@ -917,6 +922,7 @@ interface RequestOptions {
   method: "GET" | "POST" | "PATCH" | "PUT" | "DELETE";
   json?: unknown;
   expectNoContent?: boolean;
+  expectText?: boolean;
   // Lets a caller cancel an in-flight GET — autocomplete uses it so a stale
   // suggestion request can't resolve after a newer keystroke superseded it.
   signal?: AbortSignal;
@@ -935,6 +941,9 @@ async function request<T>(fetchImpl: FetchLike, url: string, options: RequestOpt
   }
   if (options.expectNoContent) {
     return undefined as T;
+  }
+  if (options.expectText) {
+    return (await response.text()) as T;
   }
   return (await response.json()) as T;
 }
