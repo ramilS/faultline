@@ -19,6 +19,7 @@ import (
 	"github.com/ramilS/faultline/internal/api"
 	"github.com/ramilS/faultline/internal/artifactauth"
 	"github.com/ramilS/faultline/internal/auth"
+	"github.com/ramilS/faultline/internal/digestlink"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/issue"
@@ -236,6 +237,7 @@ func startServerForMemberOfWebOnly(t *testing.T) (*httptest.Server, *memberFixtu
 		ArtifactCatalog:      storagepostgres.NewArtifactCatalogRepository(pool),
 		SourceMaps:           storagepostgres.NewSourceMapRepository(pool),
 		IssueService:         issue.NewService(storagepostgres.NewIssueRepository(pool)),
+		DigestLinkService:    digestlink.NewService(storagepostgres.NewDigestLinkRepository(pool), digestlink.Options{}),
 		GroupingRuleService:  grouping.NewRuleService(storagepostgres.NewGroupingRuleRepository(pool)),
 		DataScrubbingService: scrub.NewService(storagepostgres.NewProjectSettingsStore(pool)),
 		GroupService:         group.NewService(storagepostgres.NewGroupRepository(pool)),

@@ -17,6 +17,7 @@ import (
 	"github.com/ramilS/faultline/internal/app"
 	"github.com/ramilS/faultline/internal/artifactauth"
 	"github.com/ramilS/faultline/internal/auth"
+	"github.com/ramilS/faultline/internal/digestlink"
 	"github.com/ramilS/faultline/internal/durable"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
@@ -367,6 +368,11 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		}()
 	}
 
+	var digestLinkService api.DigestLinkService
+	if database.DigestLinks != nil {
+		digestLinkService = digestlink.NewService(database.DigestLinks, digestlink.Options{})
+	}
+
 	handler := app.New(app.Dependencies{
 		Database:                   database.Pool,
 		AuthService:                authService,
@@ -380,6 +386,8 @@ func run(ctx context.Context, args []string, stdout, stderr io.Writer, dependenc
 		UploadChunks:               database.UploadChunks,
 		Releases:                   database.Releases,
 		IssueService:               issueService,
+		DigestLinkService:          digestLinkService,
+		PublicURL:                  configuration.PublicURL,
 		GroupingRuleService:        groupingRuleService,
 		DataScrubbingService:       scrubService,
 		GlobalDataScrubbingService: scrubService,

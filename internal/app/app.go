@@ -36,6 +36,8 @@ type Dependencies struct {
 	UploadChunks               sentrycli.ChunkStore
 	Releases                   sentrycli.ReleaseStore
 	IssueService               api.IssueService
+	DigestLinkService          api.DigestLinkService
+	PublicURL                  string
 	GroupingRuleService        api.GroupingRuleService
 	DataScrubbingService       api.DataScrubbingService
 	GlobalDataScrubbingService api.GlobalDataScrubbingService
@@ -112,6 +114,7 @@ func routeTable(dependencies Dependencies, authHandler *api.AuthHandler) []route
 	routes = append(routes, globalDataScrubbingRoutes(dependencies)...)
 	routes = append(routes, notificationRoutes(dependencies)...)
 	routes = append(routes, issueRoutes(dependencies)...)
+	routes = append(routes, digestLinkRoutes(dependencies)...)
 	routes = append(routes, groupRoutes(dependencies)...)
 	routes = append(routes, sentryCLIRoutes(dependencies)...)
 	routes = append(routes, ingestRoutes(dependencies)...)

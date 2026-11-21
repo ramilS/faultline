@@ -38,6 +38,8 @@ var foreignProjectCases = []accessCase{
 	{pattern: "GET /api/v1/issues/{id}/events/latest", method: "GET", target: "/api/v1/issues/{foreignIssue}/events/latest"},
 	{pattern: "GET /api/v1/issues/{id}/stats", method: "GET", target: "/api/v1/issues/{foreignIssue}/stats"},
 	{pattern: "GET /api/v1/issues/{id}/digest", method: "GET", target: "/api/v1/issues/{foreignIssue}/digest"},
+	{pattern: "POST /api/v1/issues/{id}/digest-links", method: "POST", target: "/api/v1/issues/{foreignIssue}/digest-links", body: `{"ttl":"1h"}`},
+	{pattern: "DELETE /api/v1/issues/{id}/digest-links", method: "DELETE", target: "/api/v1/issues/{foreignIssue}/digest-links"},
 	{pattern: "GET /api/v1/issues/{id}/users", method: "GET", target: "/api/v1/issues/{foreignIssue}/users"},
 	{pattern: "GET /api/v1/events/{event_id}", method: "GET", target: "/api/v1/events/{foreignEvent}"},
 	{pattern: "GET /api/v1/events/{event_id}/timeline", method: "GET", target: "/api/v1/events/{foreignEvent}/timeline"},

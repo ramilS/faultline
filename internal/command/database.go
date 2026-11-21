@@ -8,6 +8,7 @@ import (
 	"github.com/ramilS/faultline/internal/artifactauth"
 	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
+	"github.com/ramilS/faultline/internal/digestlink"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
@@ -40,6 +41,7 @@ type runtimeDatabase struct {
 	Issues          issue.Repository
 	Access          access.Repository
 	ArtifactTokens  artifactauth.Repository
+	DigestLinks     digestlink.Repository
 	ArtifactCatalog artifactcatalog.Repository
 	Groups          group.Repository
 	SourceMaps      sourcemap.Repository
@@ -133,6 +135,7 @@ func assembleDatabase(ctx context.Context, configuration config.DatabaseConfig, 
 		Issues:               issues,
 		Access:               storagepostgres.NewAccessRepository(pool),
 		ArtifactTokens:       storagepostgres.NewArtifactTokenRepository(pool),
+		DigestLinks:          storagepostgres.NewDigestLinkRepository(pool),
 		ArtifactCatalog:      storagepostgres.NewArtifactCatalogRepository(pool),
 		Groups:               storagepostgres.NewGroupRepository(pool),
 		SourceMaps:           storagepostgres.NewSourceMapRepository(pool, artifactLimits...),

@@ -1,4 +1,4 @@
-import { Bot, CircleCheck, CircleDot, GitMerge } from "lucide-react";
+import { Bot, CircleCheck, CircleDot, GitMerge, Link2 } from "lucide-react";
 import { useState } from "react";
 import { toast } from "sonner";
 
@@ -13,6 +13,7 @@ import { copyLoadedText } from "@/lib/clipboard";
 
 import { AssigneeMenu } from "./AssigneeMenu";
 import { CopyButton } from "./CopyButton";
+import { DigestLinkDialog } from "./DigestLinkDialog";
 import { MergeDialog } from "./MergeDialog";
 
 interface StatusAction {
@@ -37,6 +38,7 @@ export function IssueActions({ issue, slug, selectedEventId, onChanged, onMerged
   const { session } = useSession();
   const [pending, setPending] = useState(false);
   const [mergeOpen, setMergeOpen] = useState(false);
+  const [linkOpen, setLinkOpen] = useState(false);
 
   // The page renders inside RequireSession, so the signed-in user is already
   // resolved; re-probing /auth/me here would be a redundant request.
@@ -121,6 +123,13 @@ export function IssueActions({ issue, slug, selectedEventId, onChanged, onMerged
         <Bot aria-hidden="true" />
         For AI
       </Button>
+
+      <Button type="button" variant="outline" size="sm" onClick={() => setLinkOpen(true)}>
+        <Link2 aria-hidden="true" />
+        Temporary link
+      </Button>
+
+      <DigestLinkDialog issueId={issue.id} open={linkOpen} onOpenChange={setLinkOpen} />
 
       <MergeDialog
         slug={slug}

@@ -917,3 +917,27 @@ test("getIssueDigest without a selected event asks for the latest one", async ()
 
   assert.equal(calls[0].url, "/api/v1/issues/5/digest");
 });
+
+test("createDigestLink posts the lifetime and returns the link", async () => {
+  const { fetch, calls } = recordingFetch(
+    jsonResponse(201, { url: "https://f.example/api/v1/digest-links/fl_dig_x", expires_at: "2026-11-21T10:00:00Z" }),
+  );
+  const api = createApi(fetch);
+
+  const link = await api.createDigestLink(5, "24h");
+
+  assert.equal(calls[0].url, "/api/v1/issues/5/digest-links");
+  assert.equal(calls[0].init.method, "POST");
+  assert.deepEqual(JSON.parse(calls[0].init.body as string), { ttl: "24h" });
+  assert.deepEqual(link, { url: "https://f.example/api/v1/digest-links/fl_dig_x", expires_at: "2026-11-21T10:00:00Z" });
+});
+
+test("revokeDigestLinks deletes every link of the issue", async () => {
+  const { fetch, calls } = recordingFetch(new Response(null, { status: 204 }));
+  const api = createApi(fetch);
+
+  await api.revokeDigestLinks(5);
+
+  assert.equal(calls[0].url, "/api/v1/issues/5/digest-links");
+  assert.equal(calls[0].init.method, "DELETE");
+});

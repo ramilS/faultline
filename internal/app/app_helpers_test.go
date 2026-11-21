@@ -16,6 +16,7 @@ import (
 	"github.com/ramilS/faultline/internal/artifactauth"
 	"github.com/ramilS/faultline/internal/artifactcatalog"
 	"github.com/ramilS/faultline/internal/auth"
+	"github.com/ramilS/faultline/internal/digestlink"
 	"github.com/ramilS/faultline/internal/group"
 	"github.com/ramilS/faultline/internal/grouping"
 	"github.com/ramilS/faultline/internal/ingest"
@@ -387,6 +388,7 @@ func testDependencies(t *testing.T) Dependencies {
 	dependencies.ArtifactCatalog = &appArtifactCatalogStub{}
 	dependencies.SourceMaps = &appSourceMapRepositoryStub{}
 	dependencies.IssueService = &stubIssueService{}
+	dependencies.DigestLinkService = appDigestLinkServiceStub{}
 	dependencies.GroupingRuleService = &appGroupingRuleServiceStub{}
 	dependencies.DataScrubbingService = &appDataScrubbingServiceStub{}
 	dependencies.GlobalDataScrubbingService = &appGlobalDataScrubbingServiceStub{}
@@ -424,4 +426,18 @@ func assertStatusBody(t *testing.T, recorder *httptest.ResponseRecorder, want st
 	if body["status"] != want {
 		t.Fatalf("status body = %q, want %q", body["status"], want)
 	}
+}
+
+type appDigestLinkServiceStub struct{}
+
+func (appDigestLinkServiceStub) Create(context.Context, access.Scope, int64, *int64, string) (string, time.Time, error) {
+	return "", time.Time{}, nil
+}
+
+func (appDigestLinkServiceStub) Resolve(context.Context, string) (digestlink.Target, error) {
+	return digestlink.Target{}, digestlink.ErrNotFound
+}
+
+func (appDigestLinkServiceStub) RevokeAll(context.Context, access.Scope, int64) error {
+	return nil
 }

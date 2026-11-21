@@ -246,6 +246,18 @@ func issueRoutes(dependencies Dependencies) []route {
 	}
 }
 
+func digestLinkRoutes(dependencies Dependencies) []route {
+	if dependencies.DigestLinkService == nil {
+		return nil
+	}
+	handler := api.NewDigestLinkHandler(dependencies.DigestLinkService, dependencies.IssueService, dependencies.PublicURL, api.Options{ReportError: dependencies.ReportError})
+	return []route{
+		{pattern: "POST /api/v1/issues/{id}/digest-links", gate: gateMember, handler: http.HandlerFunc(handler.Create)},
+		{pattern: "DELETE /api/v1/issues/{id}/digest-links", gate: gateMember, handler: http.HandlerFunc(handler.RevokeAll)},
+		{pattern: "GET /api/v1/digest-links/{token}", gate: gatePublic, handler: http.HandlerFunc(handler.Digest)},
+	}
+}
+
 // groupRoutes covers group administration. It registers nothing when no group
 // service is wired (mirrors the ArtifactService guard). Every route is
 // gateOwner: owners bypass groups entirely, and only an owner may create or

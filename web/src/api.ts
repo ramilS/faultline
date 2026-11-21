@@ -597,6 +597,8 @@ export interface FaultlineApi {
   getEvent(eventId: string): Promise<EventDetail>;
   getIssueStats(id: number, period: StatsPeriod): Promise<Bucket[]>;
   getIssueDigest(id: number, eventId: string | null): Promise<string>;
+  createDigestLink(id: number, ttl: DigestLinkTTL): Promise<DigestLink>;
+  revokeDigestLinks(id: number): Promise<void>;
   listIssueUsers(id: number): Promise<IssueUsersFacet>;
   getTimeline(eventId: string): Promise<Span[]>;
   getDataScrubbing(slug: string): Promise<DataScrubbingView>;
@@ -635,6 +637,13 @@ export interface FaultlineApi {
   deleteGroup(id: number): Promise<void>;
   replaceGroupMembers(id: number, userIds: number[]): Promise<number[]>;
   replaceGroupProjects(id: number, projectIds: number[]): Promise<number[]>;
+}
+
+export type DigestLinkTTL = "1h" | "24h" | "7d";
+
+export interface DigestLink {
+  url: string;
+  expires_at: string;
 }
 
 export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
@@ -783,6 +792,12 @@ export function createApi(fetchImpl: FetchLike = fetch): FaultlineApi {
     getIssueDigest: async (id, eventId) => {
       const query = eventId === null ? "" : `?event=${encodeURIComponent(eventId)}`;
       return request<string>(fetchImpl, `/api/v1/issues/${id}/digest${query}`, { method: "GET", expectText: true });
+    },
+    createDigestLink: async (id, ttl) => {
+      return request<DigestLink>(fetchImpl, `/api/v1/issues/${id}/digest-links`, { method: "POST", json: { ttl } });
+    },
+    revokeDigestLinks: async (id) => {
+      await request<void>(fetchImpl, `/api/v1/issues/${id}/digest-links`, { method: "DELETE", expectNoContent: true });
     },
     // No `limit` param: mirrors listIssueEvents above — the server defaults
     // it (parseFacetLimit in internal/api/users_facet.go), and this facet
