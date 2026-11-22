@@ -36,6 +36,8 @@ type sentryEvent struct {
 		Trace *struct {
 			TraceID string `json:"trace_id"`
 		} `json:"trace"`
+		Device json.RawMessage `json:"device"`
+		OS     json.RawMessage `json:"os"`
 	} `json:"contexts"`
 }
 
@@ -120,7 +122,7 @@ func mapSentryEventInEnvelope(payload []byte, envelopeEventID string, receivedAt
 		Release:     raw.Release,
 		RequestID:   requestID,
 		Logger:      raw.Logger,
-		Tags:        coerceSentryTags(raw.Tags),
+		Tags:        withContextTags(coerceSentryTags(raw.Tags), raw.Contexts.Device, raw.Contexts.OS),
 		User:        identity,
 		Exception:   exception,
 		DebugMeta:   raw.DebugMeta,
