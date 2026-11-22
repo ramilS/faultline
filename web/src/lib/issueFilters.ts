@@ -130,6 +130,14 @@ function sortedTags(tags: readonly TagFilter[]): readonly TagFilter[] {
   return [...tags].sort((a, b) => serializeTagParam(a).localeCompare(serializeTagParam(b)));
 }
 
+export function tagValuesFor(tags: readonly TagFilter[], key: string): readonly string[] {
+  return tags.filter((tag) => tag.key === key).map((tag) => tag.value);
+}
+
+export function withTagValues(tags: readonly TagFilter[], key: string, values: readonly string[]): readonly TagFilter[] {
+  return [...tags.filter((tag) => tag.key !== key), ...values.map((value) => ({ key, value }))];
+}
+
 /** "key:value", matching the `tag=key:value` query parameter the API reads. */
 function serializeTagParam(tag: TagFilter): string {
   return `${tag.key}:${escapeFilterValue(tag.value)}`;

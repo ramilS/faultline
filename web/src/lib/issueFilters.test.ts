@@ -24,9 +24,12 @@ import {
   sparklineCounts,
   sparklineWindow,
   streamKey,
+  tagValuesFor,
   unescapeFilterValue,
   windowColumnLabel,
-  type StreamFilters
+  withTagValues,
+  type StreamFilters,
+  type TagFilter
 } from "./issueFilters.ts";
 
 // This repo's test runner is node:test, not vitest — see web/package.json's
@@ -458,4 +461,26 @@ test("only unseen is off by default and absent from both the URL and the request
 
 test("only unseen counts as a folded secondary filter", () => {
   assert.equal(secondaryFilterCount({ ...DEFAULT_FILTERS, unseen: true }), 1);
+});
+
+const MIXED_TAGS: readonly TagFilter[] = [
+  { key: "device", value: "Pixel 7" },
+  { key: "os", value: "Android 14" },
+  { key: "device", value: "iPhone14,2" }
+];
+
+test("tagValuesFor reads the values of one tag key only", () => {
+  assert.deepEqual(tagValuesFor(MIXED_TAGS, "device"), ["Pixel 7", "iPhone14,2"]);
+  assert.deepEqual(tagValuesFor(MIXED_TAGS, "browser"), []);
+});
+
+test("withTagValues replaces one key's values and keeps the other keys", () => {
+  assert.deepEqual(withTagValues(MIXED_TAGS, "device", ["SM-S918B"]), [
+    { key: "os", value: "Android 14" },
+    { key: "device", value: "SM-S918B" }
+  ]);
+});
+
+test("withTagValues with no values drops the key", () => {
+  assert.deepEqual(withTagValues(MIXED_TAGS, "device", []), [{ key: "os", value: "Android 14" }]);
 });

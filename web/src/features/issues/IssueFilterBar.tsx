@@ -25,6 +25,8 @@ import {
   parseIssueSort,
   secondaryFilterCount,
   SORT_LABELS,
+  tagValuesFor,
+  withTagValues,
   type StreamFilters,
   type TagFilter
 } from "@/lib/issueFilters";
@@ -48,6 +50,11 @@ const LEVEL_LABELS: Record<IssueLevel, string> = {
 };
 
 const SECONDARY_FILTERS_ID = "issue-secondary-filters";
+
+const DEDICATED_TAG_FILTERS: ReadonlyArray<{ key: string; label: string }> = [
+  { key: "device", label: "Device" },
+  { key: "os", label: "OS" }
+];
 
 const ASSIGNED_ANYONE = "anyone";
 const ASSIGNED_OPTIONS: ReadonlyArray<{ value: string; label: string }> = [
@@ -203,6 +210,17 @@ export function IssueFilterBar({ slug, controls }: IssueFilterBarProps) {
                 onChange={controls.setReleases}
               />
 
+              {DEDICATED_TAG_FILTERS.map(({ key, label }) => (
+                <FacetFilterIfPopulated
+                  key={key}
+                  slug={slug}
+                  tagKey={key}
+                  label={label}
+                  selectedValues={tagValuesFor(filters.tags, key)}
+                  onChange={(values) => controls.setTags(withTagValues(filters.tags, key, values))}
+                />
+              ))}
+
               <TagFilterControl slug={slug} tags={filters.tags} onChange={controls.setTags} />
             </>
           )}
@@ -326,7 +344,7 @@ function TagFilterControl({
         // see TagKeys in internal/storage/postgres/issues.go — so this
         // control only ever offers keys without a dedicated filter.
         if (active) {
-          setKeys(result);
+          setKeys(result.filter((key) => !DEDICATED_TAG_FILTERS.some((dedicated) => dedicated.key === key.key)));
         }
       })
       .catch(() => {
@@ -342,11 +360,8 @@ function TagFilterControl({
     return null;
   }
 
-  const selectedForActiveKey = tags.filter((tag) => tag.key === activeKey).map((tag) => tag.value);
-
   function setValuesForActiveKey(values: readonly string[]): void {
-    const withoutActiveKey = tags.filter((tag) => tag.key !== activeKey);
-    onChange([...withoutActiveKey, ...values.map((value) => ({ key: activeKey, value }))]);
+    onChange(withTagValues(tags, activeKey, values));
   }
 
   return (
@@ -369,7 +384,7 @@ function TagFilterControl({
           slug={slug}
           tagKey={activeKey}
           label={`Tag: ${activeKey}`}
-          selectedValues={selectedForActiveKey}
+          selectedValues={tagValuesFor(tags, activeKey)}
           onChange={setValuesForActiveKey}
         />
       )}
